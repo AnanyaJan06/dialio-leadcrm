@@ -1,0 +1,332 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.3);
+}
+
+html[data-theme="day"] body {
+  background: #f4f7fb;
+}
+
+html[data-theme="day"] .app-shell,
+html[data-theme="day"] .bg-\[\#0A0C14\] {
+  background-color: #f4f7fb;
+  color: #172033;
+}
+
+html[data-theme="day"] .bg-\[\#0F1322\],
+html[data-theme="day"] .bg-\[\#11151F\],
+html[data-theme="day"] .bg-\[\#151B28\],
+html[data-theme="day"] .bg-\[\#161B28\],
+html[data-theme="day"] .bg-\[\#161B26\]\/95,
+html[data-theme="day"] .bg-\[\#1C2333\],
+html[data-theme="day"] .bg-gray-900,
+html[data-theme="day"] .bg-gray-900\/70 {
+  background-color: #ffffff;
+}
+
+html[data-theme="day"] .bg-\[\#0F141F\],
+html[data-theme="day"] .bg-\[\#0F1322\],
+html[data-theme="day"] .bg-gray-800 {
+  background-color: #eef3f8;
+}
+
+html[data-theme="day"] .bg-\[\#1F2533\],
+html[data-theme="day"] .hover\:bg-\[\#1F2533\]:hover,
+html[data-theme="day"] .hover\:bg-gray-800:hover {
+  background-color: #e8eef6;
+}
+
+html[data-theme="day"] .bg-gray-700 {
+  background-color: #d7e0eb;
+}
+
+html[data-theme="day"] .border-gray-800,
+html[data-theme="day"] .border-gray-700,
+html[data-theme="day"] .border-gray-600 {
+  border-color: #d7e0eb;
+}
+
+html[data-theme="day"] .text-white {
+  color: #172033;
+}
+
+html[data-theme="day"] .text-gray-300,
+html[data-theme="day"] .text-gray-400,
+html[data-theme="day"] .text-gray-500 {
+  color: #64748b;
+}
+
+html[data-theme="day"] .text-gray-600 {
+  color: #94a3b8;
+}
+
+html[data-theme="day"] .bg-\[\#059669\],
+html[data-theme="day"] .hover\:bg-\[\#047857\]:hover {
+  color: #ffffff;
+}
+
+html[data-theme="day"] .bg-emerald-600,
+html[data-theme="day"] .hover\:bg-emerald-500:hover,
+html[data-theme="day"] .bg-red-600,
+html[data-theme="day"] .hover\:bg-red-700:hover,
+html[data-theme="day"] .bg-\[\#059669\],
+html[data-theme="day"] .hover\:bg-\[\#047857\]:hover {
+  color: #ffffff;
+}
+
+html[data-theme="day"] .bg-black\/70,
+html[data-theme="day"] .bg-black\/80,
+html[data-theme="day"] .bg-black\/90 {
+  background-color: rgba(15, 23, 42, 0.45);
+}
+
+html[data-theme="day"] .conversation-call-bubble {
+  background-color: #eef3f8;
+  color: #172033;
+  border: 1px solid #d7e0eb;
+}
+
+html[data-theme="day"] .conversation-sms-outbound {
+  background-color: #d1fae5;
+  color: #172033;
+}
+
+html[data-theme="day"] .conversation-sms-inbound {
+  background-color: #ffffff;
+  color: #172033;
+  border: 1px solid #d7e0eb;
+}
+
+html[data-theme="day"] .conversation-call-bubble .text-gray-300,
+html[data-theme="day"] .conversation-sms-outbound .text-gray-300,
+html[data-theme="day"] .conversation-sms-inbound .text-gray-300,
+html[data-theme="day"] .conversation-call-bubble .text-gray-400,
+html[data-theme="day"] .conversation-sms-outbound .text-gray-400,
+html[data-theme="day"] .conversation-sms-inbound .text-gray-400 {
+  color: #64748b;
+}
+
+html[data-theme="day"] .internal-message-outbound {
+  background-color: #059669;
+  color: #ffffff;
+}
+
+html[data-theme="day"] .internal-message-inbound {
+  background-color: #eef3f8;
+  color: #172033;
+  border: 1px solid #d7e0eb;
+}
+
+html[data-theme="day"] .internal-message-outbound .internal-message-time {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+html[data-theme="day"] .internal-message-inbound .internal-message-time {
+  color: #64748b;
+}
+
+html[data-theme="day"] .dialer-panel,
+html[data-theme="day"] .dialer-panel .bg-\[\#161B28\] {
+  background-color: #ffffff;
+  color: #172033;
+}
+
+html[data-theme="day"] .dialer-call-card {
+  background: linear-gradient(135deg, #ecfdf5 0%, #ffffff 100%);
+  color: #172033;
+}
+
+html[data-theme="day"] .dialer-panel .bg-gray-800,
+html[data-theme="day"] .dialer-panel .bg-\[\#1F2937\] {
+  background-color: #eef3f8;
+  color: #172033;
+}
+
+html[data-theme="day"] .dialer-panel .hover\:bg-gray-700:hover,
+html[data-theme="day"] .dialer-panel .hover\:bg-\[\#374151\]:hover {
+  background-color: #dfe8f2;
+}
+
+html[data-theme="day"] .dialer-panel .active\:bg-\[\#4B5563\]:active {
+  background-color: #cfdae7;
+}
+
+html[data-theme="day"] .sms-toast {
+  background-color: #ffffff;
+  color: #172033;
+  border-color: #a7f3d0;
+}
+
+html[data-theme="day"] input,
+html[data-theme="day"] textarea {
+  color: #172033;
+}
+
+.call-history-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: invert(1) brightness(1.4);
+  opacity: 0.9;
+}
+
+html[data-theme="day"] .call-history-date-input::-webkit-calendar-picker-indicator {
+  filter: none;
+  opacity: 0.75;
+}
+
+html[data-theme="day"] input::placeholder,
+html[data-theme="day"] textarea::placeholder {
+  color: #94a3b8;
+}
+
+html[data-theme="day"] .shadow-2xl,
+html[data-theme="day"] .shadow-xl,
+html[data-theme="day"] .shadow-lg {
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
+}
+
+html[data-theme="day"] ::-webkit-scrollbar-track {
+  background: #e8eef6;
+}
+
+html[data-theme="day"] ::-webkit-scrollbar-thumb {
+  background: #b7c3d3;
+}
+
+html[data-theme="day"] ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.dialer-backdrop {
+  transition: opacity 220ms ease;
+}
+
+.dialer-backdrop-opening,
+.dialer-backdrop-closing,
+.dialer-backdrop-minimizing {
+  opacity: 0;
+}
+
+.dialer-backdrop-open {
+  opacity: 1;
+}
+
+.dialer-panel {
+  transform-origin: center;
+  transition:
+    opacity 220ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.dialer-panel-opening {
+  opacity: 0;
+  transform: translateY(18px) scale(0.94);
+}
+
+.dialer-panel-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.dialer-panel-closing {
+  opacity: 0;
+  transform: translateY(16px) scale(0.96);
+}
+
+.dialer-panel-minimizing {
+  opacity: 0;
+  transform: translate(calc(50vw - 130px), calc(50vh - 90px)) scale(0.22);
+}
+
+.dialer-minimized-card {
+  animation: dialerMiniIn 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes dialerMiniIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.88);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-backdrop {
+  animation: modalBackdropIn 180ms ease-out;
+}
+
+.modal-panel {
+  animation: modalPanelIn 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: center;
+}
+
+.sms-toast {
+  animation: smsToastIn 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes modalBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes smsToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialer-backdrop,
+  .dialer-panel {
+    transition: none;
+  }
+
+  .dialer-minimized-card,
+  .modal-backdrop,
+  .modal-panel,
+  .sms-toast {
+    animation: none;
+  }
+}
+/* Completely Hide Scrollbar but keep scrolling */
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;     /* Firefox */
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;             /* Chrome, Safari, Edge */
+}
