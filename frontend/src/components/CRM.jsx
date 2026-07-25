@@ -4,6 +4,17 @@ import InlineLoader from './ui/InlineLoader.jsx';
 import { showErrorToast, showSuccessToast } from '../utils/toast.js';
 import { BACKEND_URL } from '../config/api.js';
 
+const LEAD_DISPOSITIONS = [
+  'Quoted',
+  'No Response',
+  'Wrong Number',
+  'Not Interested',
+  'Price too high',
+  'Part not available',
+  'Ordered',
+  'Already ordered',
+];
+
 const emptyForm = {
   name: '',
   email: '',
@@ -46,6 +57,7 @@ function CRM() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [searchTerm, setSearchTerm] = useState('');
+  const [updatingLeadId, setUpdatingLeadId] = useState(null);
 
   const authHeaders = {
     Authorization: `Bearer ${localStorage.getItem('token')}`
@@ -112,13 +124,42 @@ function CRM() {
     }
   };
 
+  const updateLeadDisposition = async (leadId, disposition) => {
+    try {
+      setUpdatingLeadId(leadId);
+      const res = await fetch(`${BACKEND_URL}/api/leads/${leadId}/disposition`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        body: JSON.stringify({ disposition }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.message || 'Failed to update lead status');
+
+      setLeads((current) => current.map((lead) => (
+        lead._id === leadId ? data.lead : lead
+      )));
+      showSuccessToast('Lead status updated');
+    } catch (error) {
+      showErrorToast(error.message || 'Failed to update lead status');
+    } finally {
+      setUpdatingLeadId(null);
+    }
+  };
   const filteredLeads = leads.filter((lead) => {
     const term = searchTerm.toLowerCase();
     return (
       String(lead.name || '').toLowerCase().includes(term)
       || String(lead.phone || '').toLowerCase().includes(term)
-      || String(lead.email || '').toLowerCase().includes(term)
       || String(lead.partRequested || '').toLowerCase().includes(term)
+      || String(lead.make || '').toLowerCase().includes(term)
+      || String(lead.model || '').toLowerCase().includes(term)
+      || String(lead.year || '').toLowerCase().includes(term)
+      || String(lead.disposition || '').toLowerCase().includes(term)
+      || String(lead.zip || '').toLowerCase().includes(term)
     );
   });
 
@@ -149,8 +190,6 @@ function CRM() {
             <input name="partRequested" value={form.partRequested} onChange={handleChange} placeholder="Part Requested" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
             <input name="make" value={form.make} onChange={handleChange} placeholder="Make" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
             <input name="model" value={form.model} onChange={handleChange} placeholder="Model" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
-            <input name="year" value={form.year} onChange={handleChange} placeholder="Year" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
-            <input name="yearMakeModel" value={form.yearMakeModel} onChange={handleChange} placeholder="Year / Make / Model" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
             <select name="disposition" value={form.disposition} onChange={handleChange} className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white">
               <option value="Quoted">Quoted</option>
               <option value="No Response">No Response</option>
@@ -161,14 +200,6 @@ function CRM() {
               <option value="Ordered">Ordered</option>
               <option value="Already ordered">Already ordered</option>
             </select>
-            <select name="source" value={form.source} onChange={handleChange} className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white">
-              <option value="manual">Manual</option>
-              <option value="website">Website</option>
-              <option value="facebook">Facebook</option>
-              <option value="other">Other</option>
-            </select>
-            <input name="followUpAt" type="datetime-local" value={form.followUpAt} onChange={handleChange} className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
-            <input name="followUpNote" value={form.followUpNote} onChange={handleChange} placeholder="Follow-Up Note" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
             <textarea name="notes" value={form.notes} onChange={handleChange} placeholder="Notes" className="min-h-24 rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white md:col-span-2" />
             <button type="submit" disabled={saving} className="rounded-xl bg-[#059669] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#047857] disabled:opacity-70 md:col-span-2">
               {saving ? <InlineLoader label="Saving" /> : 'Save Lead'}
@@ -217,9 +248,15 @@ function CRM() {
                 <span className="truncate text-gray-300">{lead.year || '-'}</span>
                 <span className="truncate text-gray-300">{lead.model || '-'}</span>
                 <span className="truncate text-gray-300">{lead.zip || '-'}</span>
-                <span className="w-fit rounded-full bg-emerald-600/20 px-2.5 py-1 text-[11px] font-medium text-emerald-300">
-                    {lead.disposition || 'Quoted'}
-                  </span>
+                <select
+                  aria-label={`Status for ${lead.name || 'lead'}`}
+                  value={lead.disposition || 'Quoted'}
+                  disabled={updatingLeadId === lead._id}
+                  onChange={(event) => updateLeadDisposition(lead._id, event.target.value)}
+                  className="w-full rounded-full border border-emerald-600/30 bg-emerald-600/20 px-2.5 py-1 text-[11px] font-medium text-emerald-300 outline-none disabled:cursor-wait disabled:opacity-60"
+                >
+                  {LEAD_DISPOSITIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+                </select>
               </div>
             ))}
           </div>

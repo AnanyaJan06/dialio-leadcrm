@@ -1,5 +1,16 @@
 import Lead from '../model/Lead.js';
 
+const LEAD_DISPOSITIONS = [
+  'Quoted',
+  'No Response',
+  'Wrong Number',
+  'Not Interested',
+  'Price too high',
+  'Part not available',
+  'Ordered',
+  'Already ordered',
+];
+
 export const createLead = async (req, res) => {
   try {
     const {
@@ -51,6 +62,30 @@ export const getLeads = async (req, res) => {
       .lean();
 
     res.json(leads);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const updateLeadDisposition = async (req, res) => {
+  try {
+    const { disposition } = req.body;
+
+    if (!LEAD_DISPOSITIONS.includes(disposition)) {
+      return res.status(400).json({ message: 'A valid lead status is required' });
+    }
+
+    const lead = await Lead.findByIdAndUpdate(
+      req.params.id,
+      { disposition },
+      { new: true, runValidators: true }
+    );
+
+    if (!lead) {
+      return res.status(404).json({ message: 'Lead not found' });
+    }
+
+    res.json({ message: 'Lead status updated', lead });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
