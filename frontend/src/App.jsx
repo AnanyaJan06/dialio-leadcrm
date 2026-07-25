@@ -8,6 +8,7 @@ import Messages from './components/Messages.jsx';
 import InternalMessages, { InternalMessageDetails } from './components/InternalMessages.jsx';
 import AdminDashboard from './components/AdminDashboard.jsx';
 import FollowUps from './components/FollowUps.jsx';
+import CRM from './components/CRM.jsx';
 import AppToaster from './components/ui/AppToaster.jsx';
 import Settings from './pages/Settings.jsx';
 import Login from './pages/Login.jsx';
@@ -62,6 +63,17 @@ function NavIcon({ type }) {
     messages: (
       <svg {...common}>
         <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+      </svg>
+    ),
+    crm: (
+      <svg {...common}>
+        <path d="M4 4h16" />
+        <path d="M7 4v16" />
+        <path d="M17 4v16" />
+        <path d="M4 20h16" />
+        <path d="M10 8h4" />
+        <path d="M10 12h4" />
+        <path d="M10 16h4" />
       </svg>
     ),
     team: (
@@ -499,6 +511,7 @@ function App() {
             { id: 'history', label: 'Calls' },
             { id: 'contacts', label: 'Contacts' },
             { id: 'messages', label: 'Messages' },
+            { id: 'crm', label: 'CRM' },
             { id: 'team', label: 'Team Chat' },
             { id: 'followups', label: 'Follow Ups' },
             { id: 'settings', label: 'Settings' },
@@ -566,6 +579,7 @@ function App() {
             {activeTab === 'history' && 'Call History'}
             {activeTab === 'contacts' && 'Contacts'}
             {activeTab === 'messages' && 'Messages'}
+            {activeTab === 'crm' && 'CRM'}
             {activeTab === 'team' && 'Team Chat'}
             {activeTab === 'followups' && 'Follow Ups'}
             {activeTab === 'settings' && 'Settings'}
@@ -592,6 +606,7 @@ function App() {
           )}
           {activeTab === 'history' && <CallHistory />}
           {activeTab === 'contacts' && <Contacts />}
+          {activeTab === 'crm' && <CRM />}
           {activeTab === 'messages' && (
             <Messages
               selectedPhoneNumber={selectedMessageNumber}
