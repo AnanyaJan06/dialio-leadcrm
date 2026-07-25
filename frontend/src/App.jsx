@@ -572,7 +572,7 @@ function App() {
       </div>
 
       {/* Middle Panel */}
-      <div className="min-h-0 flex-1 border-r border-gray-800 bg-[#161B28] flex flex-col md:w-[390px] md:flex-none xl:w-[410px]">
+      <div className={`min-h-0 flex-1 border-r border-gray-800 bg-[#161B28] flex flex-col md:w-[390px] md:flex-none xl:w-[410px] ${activeTab === 'crm' ? 'lg:hidden' : ''}`}>
         <div className="h-12 border-b border-gray-800 flex items-center justify-between px-4 bg-[#1C2333] md:h-14 md:px-5">
           <h2 className="text-base font-semibold md:text-lg">
             {activeTab === 'admin' && 'Admin Dashboard'}
@@ -634,6 +634,10 @@ function App() {
         {activeTab === 'admin' && isAdmin ? (
           <div className="h-full overflow-auto p-4 thin-scrollbar">
             <AdminDashboard showUsers={false} />
+          </div>
+        ) : activeTab === 'crm' ? (
+          <div className="h-full overflow-auto p-4 thin-scrollbar">
+            <CRM />
           </div>
         ) : activeTab === 'team' ? (
           <InternalMessageDetails
