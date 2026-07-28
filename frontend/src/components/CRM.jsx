@@ -56,6 +56,7 @@ function CRM() {
   const [saving, setSaving] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [updatingLeadId, setUpdatingLeadId] = useState(null);
 
@@ -163,6 +164,11 @@ function CRM() {
     );
   });
 
+  const handleLeadSearch = (event) => {
+    event.preventDefault();
+    setSearchTerm(searchInput);
+  };
+
   return (
     <div className="mx-auto flex h-full max-w-6xl flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -211,13 +217,15 @@ function CRM() {
       <div className="min-h-0 flex-1 rounded-2xl border border-gray-800 bg-gray-900 p-4">
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-sm font-semibold text-white">Lead List</h3>
-          <input
-            type="text"
-            placeholder="Search leads"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            className="w-full rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white sm:w-64"
-          />
+          <form onSubmit={handleLeadSearch} className="w-full sm:w-64">
+            <input
+              type="text"
+              placeholder="Search leads and press Enter"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              className="w-full rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white"
+            />
+          </form>
         </div>
 
         {loading ? (
