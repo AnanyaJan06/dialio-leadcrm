@@ -44,7 +44,7 @@ function NavIcon({ type }) {
     strokeLinecap: 'round',
     strokeLinejoin: 'round',
     'aria-hidden': 'true'
-  };
+  }; 
 
   const icons = {
     history: (
