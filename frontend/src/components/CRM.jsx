@@ -68,6 +68,39 @@ const formatDateTime = (value) => {
   return date.toLocaleString();
 };
 
+const formatDate = (value) => {
+  if (!value) return '-';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+
+  return date.toLocaleDateString();
+};
+
+const formatShortDate = (value) => {
+  if (!value) return '-';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+
+  return date.toLocaleDateString(undefined, {
+    month: 'numeric',
+    day: 'numeric',
+    year: '2-digit',
+  });
+};
+
+const formatSourceTooltip = (source) => {
+  const labels = {
+    manual: 'manually created',
+    website: 'website',
+    facebook: 'facebook',
+    other: 'other',
+  };
+
+  return labels[source] || source || 'manual';
+};
+
 const canUsePhone = (phone) => String(phone || '').replace(/\D/g, '').length >= 7;
 
 function PhoneIcon() {
@@ -510,6 +543,7 @@ function CRM() {
             <input name="partRequested" value={form.partRequested} onChange={handleChange} placeholder="Part Requested" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
             <input name="make" value={form.make} onChange={handleChange} placeholder="Make" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
             <input name="model" value={form.model} onChange={handleChange} placeholder="Model" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
+            <input name="year" value={form.year} onChange={handleChange} placeholder="Year" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
             <select name="disposition" value={form.disposition} onChange={handleChange} className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white">
               <option value="Quoted">Quoted</option>
               <option value="No Response">No Response</option>
@@ -520,13 +554,6 @@ function CRM() {
               <option value="Ordered">Ordered</option>
               <option value="Already ordered">Already ordered</option>
             </select>
-            <select name="source" value={form.source} onChange={handleChange} className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white">
-              <option value="manual">Manual</option>
-              <option value="website">Website</option>
-              <option value="facebook">Facebook</option>
-              <option value="other">Other</option>
-            </select>
-            <input type="datetime-local" name="followUpAt" value={form.followUpAt} onChange={handleChange} className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
             <textarea name="notes" value={form.notes} onChange={handleChange} placeholder="Notes" className="min-h-24 rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white md:col-span-2" />
             <textarea name="followUpNote" value={form.followUpNote} onChange={handleChange} placeholder="Follow-up note" className="min-h-20 rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white md:col-span-2" />
             <button type="submit" disabled={saving} className="rounded-xl bg-[#059669] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#047857] disabled:opacity-70 md:col-span-2">
@@ -586,11 +613,11 @@ function CRM() {
               const hasUsablePhone = canUsePhone(lead.phone);
 
               return (
-                <div key={lead._id} className="rounded-2xl border border-gray-800 bg-gray-950 p-4">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div key={lead._id} className="rounded-2xl border border-gray-800 bg-gray-950 p-3.5 transition hover:border-gray-700 hover:bg-gray-900/60">
+                  <div className="flex flex-col gap-2.5 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="truncate text-sm font-semibold text-white">{lead.name || 'Unnamed lead'}</h4>
+                        <h4 className="truncate text-base font-semibold text-white">{lead.name || 'Unnamed lead'}</h4>
                         <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-300">{lead.disposition || 'Quoted'}</span>
                         <button
                           type="button"
@@ -642,29 +669,47 @@ function CRM() {
                         {isFollowUpDue && <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">Follow-up due</span>}
                         {isFollowUpSoon && !isFollowUpDue && <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-300">Reminder soon</span>}
                       </div>
-                      <div className="mt-2 grid gap-1 text-sm text-gray-400 sm:grid-cols-2 xl:grid-cols-4">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="shrink-0 text-gray-500">Phone:</span>
-                          <span className="min-w-0 truncate">{lead.phone || '-'}</span>
-                        </div>
-                        <p><span className="text-gray-500">Source:</span> {lead.source || 'manual'}</p>
-                        <p><span className="text-gray-500">Assignee:</span> {lead.assignedTo?.name || 'Unassigned'}</p>
-                        <p><span className="text-gray-500">Created:</span> {new Date(lead.createdAt).toLocaleDateString()}</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-gray-300">
+                        <p className="min-w-0">
+                          <span className="text-gray-500">Phone:</span>{' '}
+                          <span className="font-medium text-gray-200">{lead.phone || '-'}</span>
+                        </p>
+                        <p className="min-w-0">
+                          <span className="text-gray-500">Email:</span>{' '}
+                          <span className="break-all font-medium text-gray-200">{lead.email || '-'}</span>
+                        </p>
+                        <p className="min-w-0">
+                          <span className="text-gray-500">ZIP:</span>{' '}
+                          <span className="font-medium text-gray-200">{lead.zip || '-'}</span>
+                        </p>
+                        <span
+                          className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium capitalize text-sky-300"
+                          title={`Lead generated: ${formatDate(lead.createdAt)} Source: ${formatSourceTooltip(lead.source)}`}
+                          aria-label={`Lead generated: ${formatDate(lead.createdAt)} Source: ${formatSourceTooltip(lead.source)}`}
+                        >
+                          {formatShortDate(lead.createdAt)}:{lead.source || 'manual'}
+                        </span>
                       </div>
-                      <div className="mt-2 space-y-1 text-sm text-gray-400">
-                        <p><span className="text-gray-500">Part requested:</span> {lead.partRequested || '-'}</p>
-                        <p><span className="text-gray-500">Make / Model:</span> {lead.make || '-'} / {lead.model || '-'}</p>
-                        <p><span className="text-gray-500">Follow-up:</span> {formatDateTime(lead.followUpAt)}{lead.followUpNote ? ` • ${lead.followUpNote}` : ''}</p>
+                      <div className="mt-1.5 space-y-1 text-sm text-gray-400">
+                        <p><span className="text-gray-500">Part requested:</span> <span className="text-gray-300">{lead.partRequested || '-'}</span></p>
+                        <p className="flex flex-wrap gap-x-5 gap-y-1">
+                          <span><span className="text-gray-500">Make / Model:</span> <span className="text-gray-300">{lead.make || '-'} / {lead.model || '-'}</span></span>
+                          <span><span className="text-gray-500">Year:</span> <span className="text-gray-300">{lead.year || '-'}</span></span>
+                        </p>
+                        <p className="flex flex-wrap gap-x-5 gap-y-1">
+                          <span><span className="text-gray-500">Assignee:</span> <span className="text-gray-300">{lead.assignedTo?.name || lead.assignedTo?.email || 'Unassigned'}</span></span>
+                          <span><span className="text-gray-500">Follow-up:</span> <span className="text-gray-300">{formatDateTime(lead.followUpAt)}{lead.followUpNote ? ` - ${lead.followUpNote}` : ''}</span></span>
+                        </p>
                       </div>
                     </div>
 
-                    <div className="flex flex-col gap-2 lg:w-72">
+                    <div className="flex flex-col gap-1.5 lg:w-72">
                       <select
                         aria-label={`Status for ${lead.name || 'lead'}`}
                         value={lead.disposition || 'Quoted'}
                         disabled={updatingLeadId === lead._id}
                         onChange={(event) => updateLeadDisposition(lead._id, event.target.value)}
-                        className="rounded-xl border border-emerald-600/30 bg-emerald-600/10 px-3 py-2 text-sm font-medium text-emerald-300 outline-none disabled:cursor-wait disabled:opacity-60"
+                        className="rounded-xl border border-emerald-600/30 bg-emerald-600/10 px-3 py-2 text-sm font-semibold text-emerald-300 outline-none disabled:cursor-wait disabled:opacity-60"
                       >
                         {LEAD_DISPOSITIONS.map((status) => <option key={status} value={status}>{status}</option>)}
                       </select>
@@ -673,7 +718,7 @@ function CRM() {
                         type="button"
                         onClick={() => handleCallLead(lead.phone)}
                         disabled={!hasUsablePhone}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm font-medium text-sky-200 transition hover:border-sky-400 hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
                         title={hasUsablePhone ? `Call ${lead.phone}` : 'No phone number'}
                         aria-label={hasUsablePhone ? `Call ${lead.phone}` : 'No phone number to call'}
                       >
