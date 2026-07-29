@@ -177,6 +177,7 @@ function FollowUps({ onDueCountChange }) {
       )));
       showSuccessToast(completed ? 'Follow-up completed' : 'Follow-up reopened');
       window.dispatchEvent(new Event('refreshFollowUps'));
+      window.dispatchEvent(new Event('refreshLeads'));
     } catch (error) {
       showErrorToast(error.message || 'Failed to update follow-up');
     }
@@ -205,6 +206,7 @@ function FollowUps({ onDueCountChange }) {
       setFollowUps((current) => current.filter((item) => item._id !== followUp._id));
       showSuccessToast('Follow-up deleted');
       window.dispatchEvent(new Event('refreshFollowUps'));
+      window.dispatchEvent(new Event('refreshLeads'));
     } catch (error) {
       showErrorToast(error.message || 'Failed to delete follow-up');
     }
