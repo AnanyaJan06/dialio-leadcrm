@@ -136,6 +136,33 @@ export const getUsers = async (req, res) => {
   }
 };
 
+export const updateLeadAssignmentStatus = async (req, res) => {
+  try {
+    const { active } = req.body;
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.isLeadAssignmentActive = Boolean(active);
+    await user.save();
+
+    res.json({
+      message: 'Lead assignment status updated',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isLeadAssignmentActive: user.isLeadAssignmentActive,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const readDateRange = (startValue, endValue) => {
   const start = new Date(startValue);
   const end = new Date(endValue);

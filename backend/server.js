@@ -78,6 +78,11 @@ app.get('/api/health', (req, res) => res.json({ status: 'OK' }));
 io.on('connection', (socket) => {
   console.log('⚡ User connected:', socket.id);
 
+  socket.on('join-user-room', ({ userId }) => {
+    if (!userId) return;
+    socket.join(String(userId));
+  });
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
   });

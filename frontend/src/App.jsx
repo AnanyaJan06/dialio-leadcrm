@@ -13,7 +13,7 @@ import AppToaster from './components/ui/AppToaster.jsx';
 import Settings from './pages/Settings.jsx';
 import Login from './pages/Login.jsx';
 import { confirmAction } from './utils/confirmDialog.js';
-import { showIncomingSmsToast, showTeamMessageToast } from './utils/toast.js';
+import { showIncomingSmsToast, showSuccessToast, showTeamMessageToast } from './utils/toast.js';
 import './App.css';
 import { BACKEND_URL } from './config/api.js';
 
@@ -331,6 +331,11 @@ function App() {
       transports: ['websocket', 'polling']
     });
 
+    const currentUserId = getUserId(currentUserRef.current);
+    if (currentUserId) {
+      socket.emit('join-user-room', { userId: currentUserId });
+    }
+
     socket.on('incoming-message', (message) => {
       const assignedRecipients = Array.isArray(message.assignedTo)
         ? message.assignedTo.map((value) => String(value))
@@ -382,6 +387,16 @@ function App() {
 
     socket.on('message-status-updated', () => {
       window.dispatchEvent(new Event('refreshMessages'));
+    });
+
+    socket.on('lead-assigned', (payload) => {
+      const assignedUserId = getUserId(currentUserRef.current);
+      const leadAssignedToUser = payload?.lead?.assignedTo && getUserId(payload.lead.assignedTo) === assignedUserId;
+
+      if (!leadAssignedToUser) return;
+
+      window.dispatchEvent(new Event('refreshLeads'));
+      showSuccessToast(payload.message || 'You were assigned a new lead');
     });
 
     socket.on('internal-message-created', (message) => {

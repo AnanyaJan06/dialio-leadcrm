@@ -1,4 +1,6 @@
 import Lead from '../model/Lead.js';
+import User from '../model/User.js';
+import LeadAssignmentState from '../model/LeadAssignmentState.js';
 
 const LEAD_DISPOSITIONS = [
   'Quoted',
@@ -10,6 +12,44 @@ const LEAD_DISPOSITIONS = [
   'Ordered',
   'Already ordered',
 ];
+
+const getAssignableUsers = async () => {
+  return User.find({
+    role: 'agent',
+    isLeadAssignmentActive: { $ne: false },
+  }).select('_id name email').sort({ name: 1 });
+};
+
+const getNextAssignee = async () => {
+  let state = await LeadAssignmentState.findOne({ key: 'default' });
+
+  if (!state) {
+    state = await LeadAssignmentState.create({ key: 'default', currentIndex: 0 });
+  }
+
+  const users = await getAssignableUsers();
+
+  if (!users.length) {
+    return null;
+  }
+
+  const index = state.currentIndex % users.length;
+  const nextUser = users[index];
+  state.currentIndex = (index + 1) % users.length;
+  await state.save();
+
+  return nextUser;
+};
+
+const emitLeadAssigned = (req, lead) => {
+  const io = req.app.get('io');
+  if (!io || !lead?.assignedTo) return;
+
+  io.to(String(lead.assignedTo._id || lead.assignedTo)).emit('lead-assigned', {
+    lead,
+    message: `New lead assigned: ${lead.name}`,
+  });
+};
 
 export const createLead = async (req, res) => {
   try {
@@ -30,6 +70,16 @@ export const createLead = async (req, res) => {
       followUpNote,
     } = req.body;
 
+    const isAdmin = req.user?.role === 'admin';
+    let assignedTo = null;
+
+    if (isAdmin) {
+      const nextUser = await getNextAssignee();
+      assignedTo = nextUser?._id || null;
+    } else {
+      assignedTo = req.user?.id || null;
+    }
+
     const lead = await Lead.create({
       name: name?.trim(),
       email: email?.trim(),
@@ -46,10 +96,17 @@ export const createLead = async (req, res) => {
       followUpAt: followUpAt ? new Date(followUpAt) : null,
       followUpNote: followUpNote?.trim() || '',
       createdBy: req.user?.id || null,
-      assignedTo: req.user?.id || null,
+      assignedTo,
     });
 
-    res.status(201).json({ message: 'Lead created', lead });
+    const populatedLead = await Lead.findById(lead._id)
+      .populate('assignedTo', 'name email role')
+      .populate('createdBy', 'name email role')
+      .lean();
+
+    emitLeadAssigned(req, populatedLead);
+
+    res.status(201).json({ message: 'Lead created', lead: populatedLead });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -57,7 +114,43 @@ export const createLead = async (req, res) => {
 
 export const getLeads = async (req, res) => {
   try {
-    const leads = await Lead.find()
+    const {
+      status,
+      assignee,
+      source,
+      fromDate,
+      toDate,
+      search,
+    } = req.query;
+
+    const filter = {};
+
+    if (status) filter.disposition = status;
+    if (assignee) filter.assignedTo = assignee;
+    if (source) filter.source = source;
+    if (search) {
+      const term = String(search).trim();
+      if (term) {
+        filter.$or = [
+          { name: { $regex: term, $options: 'i' } },
+          { phone: { $regex: term, $options: 'i' } },
+          { partRequested: { $regex: term, $options: 'i' } },
+          { make: { $regex: term, $options: 'i' } },
+          { model: { $regex: term, $options: 'i' } },
+          { zip: { $regex: term, $options: 'i' } },
+        ];
+      }
+    }
+
+    if (fromDate || toDate) {
+      filter.createdAt = {};
+      if (fromDate) filter.createdAt.$gte = new Date(fromDate);
+      if (toDate) filter.createdAt.$lte = new Date(toDate);
+    }
+
+    const leads = await Lead.find(filter)
+      .populate('assignedTo', 'name email role')
+      .populate('createdBy', 'name email role')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -85,7 +178,65 @@ export const updateLeadDisposition = async (req, res) => {
       return res.status(404).json({ message: 'Lead not found' });
     }
 
-    res.json({ message: 'Lead status updated', lead });
+    const populatedLead = await Lead.findById(lead._id)
+      .populate('assignedTo', 'name email role')
+      .populate('createdBy', 'name email role')
+      .lean();
+
+    res.json({ message: 'Lead status updated', lead: populatedLead });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const addLeadNote = async (req, res) => {
+  try {
+    const { note } = req.body;
+    const trimmedNote = note?.trim();
+
+    if (!trimmedNote) {
+      return res.status(400).json({ message: 'A note is required' });
+    }
+
+    const lead = await Lead.findById(req.params.id);
+    if (!lead) {
+      return res.status(404).json({ message: 'Lead not found' });
+    }
+
+    lead.notes = `${lead.notes || ''}${lead.notes ? '\n' : ''}${new Date().toLocaleString()} - ${trimmedNote}`.trim();
+    await lead.save();
+
+    const populatedLead = await Lead.findById(lead._id)
+      .populate('assignedTo', 'name email role')
+      .populate('createdBy', 'name email role')
+      .lean();
+
+    res.json({ message: 'Note added', lead: populatedLead });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const updateLeadFollowUp = async (req, res) => {
+  try {
+    const { followUpAt, followUpNote } = req.body;
+
+    const lead = await Lead.findById(req.params.id);
+    if (!lead) {
+      return res.status(404).json({ message: 'Lead not found' });
+    }
+
+    lead.followUpAt = followUpAt ? new Date(followUpAt) : null;
+    lead.followUpNote = followUpNote?.trim() || '';
+    lead.followUpSetBy = req.user?.id || null;
+    await lead.save();
+
+    const populatedLead = await Lead.findById(lead._id)
+      .populate('assignedTo', 'name email role')
+      .populate('createdBy', 'name email role')
+      .lean();
+
+    res.json({ message: 'Follow-up updated', lead: populatedLead });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
