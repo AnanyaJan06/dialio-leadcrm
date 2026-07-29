@@ -226,7 +226,16 @@ html[data-theme="day"] .crm-page .text-amber-300 {
   color: #b45309;
 }
 
+html[data-theme="day"] .crm-page .text-gray-200 {
+  color: #1f2937;
+}
+
 html[data-theme="day"] .crm-page .text-gray-300 {
+  color: #475569;
+}
+
+html[data-theme="day"] .crm-page .text-gray-400,
+html[data-theme="day"] .crm-page .text-gray-500 {
   color: #475569;
 }
 

@@ -682,17 +682,20 @@ function CRM() {
                           <span className="text-gray-500">ZIP:</span>{' '}
                           <span className="font-medium text-gray-200">{lead.zip || '-'}</span>
                         </p>
-                        <span
-                          className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium capitalize text-sky-300"
+                        <p
+                          className="min-w-0 text-xs text-gray-500"
                           title={`Lead generated: ${formatDate(lead.createdAt)} Source: ${formatSourceTooltip(lead.source)}`}
                           aria-label={`Lead generated: ${formatDate(lead.createdAt)} Source: ${formatSourceTooltip(lead.source)}`}
                         >
-                          {formatShortDate(lead.createdAt)}:{lead.source || 'manual'}
-                        </span>
+                          <span>Created:</span>{' '}
+                          <span>{formatShortDate(lead.createdAt)}</span>{' '}
+                          <span>Source:</span>{' '}
+                          <span className="capitalize">{lead.source || 'manual'}</span>
+                        </p>
                       </div>
                       <div className="mt-1.5 space-y-1 text-sm text-gray-400">
-                        <p><span className="text-gray-500">Part requested:</span> <span className="text-gray-300">{lead.partRequested || '-'}</span></p>
                         <p className="flex flex-wrap gap-x-5 gap-y-1">
+                          <span><span className="text-gray-500">Part requested:</span> <span className="text-gray-300">{lead.partRequested || '-'}</span></span>
                           <span><span className="text-gray-500">Make / Model:</span> <span className="text-gray-300">{lead.make || '-'} / {lead.model || '-'}</span></span>
                           <span><span className="text-gray-500">Year:</span> <span className="text-gray-300">{lead.year || '-'}</span></span>
                         </p>
