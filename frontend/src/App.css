@@ -189,6 +189,65 @@ html[data-theme="day"] textarea::placeholder {
   color: #94a3b8;
 }
 
+html[data-theme="day"] .crm-page .bg-gray-950 {
+  background-color: #ffffff;
+}
+
+html[data-theme="day"] .crm-page input,
+html[data-theme="day"] .crm-page textarea,
+html[data-theme="day"] .crm-page select {
+  background-color: #eef3f8;
+  color: #172033;
+  border-color: #cbd5e1;
+}
+
+html[data-theme="day"] .crm-page select option {
+  background-color: #ffffff;
+  color: #172033;
+}
+
+html[data-theme="day"] .crm-page .bg-gray-900,
+html[data-theme="day"] .crm-page .bg-gray-800 {
+  background-color: #f8fafc;
+}
+
+html[data-theme="day"] .crm-page .text-emerald-200,
+html[data-theme="day"] .crm-page .text-emerald-300 {
+  color: #047857;
+}
+
+html[data-theme="day"] .crm-page .text-sky-200,
+html[data-theme="day"] .crm-page .text-sky-300 {
+  color: #0369a1;
+}
+
+html[data-theme="day"] .crm-page .text-amber-200,
+html[data-theme="day"] .crm-page .text-amber-300 {
+  color: #b45309;
+}
+
+html[data-theme="day"] .crm-page .text-gray-300 {
+  color: #475569;
+}
+
+html[data-theme="day"] .crm-page .bg-emerald-500\/10,
+html[data-theme="day"] .crm-page .bg-emerald-600\/10 {
+  background-color: rgba(5, 150, 105, 0.12);
+}
+
+html[data-theme="day"] .crm-page .bg-sky-500\/10 {
+  background-color: rgba(14, 165, 233, 0.12);
+}
+
+html[data-theme="day"] .crm-page .bg-amber-500\/10,
+html[data-theme="day"] .crm-page .bg-amber-500\/20 {
+  background-color: rgba(245, 158, 11, 0.16);
+}
+
+html[data-theme="day"] .crm-page .bg-black\/60 {
+  background-color: rgba(15, 23, 42, 0.38);
+}
+
 html[data-theme="day"] .shadow-2xl,
 html[data-theme="day"] .shadow-xl,
 html[data-theme="day"] .shadow-lg {

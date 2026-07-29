@@ -526,7 +526,6 @@ function App() {
             { id: 'history', label: 'Calls' },
             { id: 'contacts', label: 'Contacts' },
             { id: 'messages', label: 'Messages' },
-            { id: 'crm', label: 'CRM' },
             { id: 'team', label: 'Team Chat' },
             { id: 'followups', label: 'Follow Ups' },
             { id: 'settings', label: 'Settings' },
@@ -556,6 +555,17 @@ function App() {
               )}
             </div>
           ))}
+
+          <div
+            onClick={() => openTab('crm')}
+            className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-white shadow-lg transition-all md:mt-auto md:px-4 md:py-3
+              ${activeTab === 'crm'
+                ? 'cursor-default bg-cyan-500 ring-2 ring-cyan-200/50'
+                : 'cursor-pointer bg-cyan-600 hover:bg-cyan-500'}`}
+          >
+            <span className="w-5"><NavIcon type="crm" /></span>
+            CRM
+          </div>
 
           {/* + New Call Button */}
           <div

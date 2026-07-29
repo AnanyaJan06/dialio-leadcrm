@@ -51,6 +51,16 @@ const emitLeadAssigned = (req, lead) => {
   });
 };
 
+const getActorName = (req) => req.user?.name || req.user?.email || 'Unknown user';
+
+const formatNoteEntry = (req, text) => {
+  return `${new Date().toLocaleString()} - ${getActorName(req)}: ${text}`;
+};
+
+const appendLeadNote = (lead, req, text) => {
+  lead.notes = `${lead.notes || ''}${lead.notes ? '\n' : ''}${formatNoteEntry(req, text)}`.trim();
+};
+
 export const createLead = async (req, res) => {
   try {
     const {
@@ -80,6 +90,16 @@ export const createLead = async (req, res) => {
       assignedTo = req.user?.id || null;
     }
 
+    const initialNotes = [];
+    if (notes?.trim()) {
+      initialNotes.push(formatNoteEntry(req, notes.trim()));
+    }
+    if (followUpAt) {
+      const followUpParts = [`Follow-up scheduled for ${new Date(followUpAt).toLocaleString()}`];
+      if (followUpNote?.trim()) followUpParts.push(`Note: ${followUpNote.trim()}`);
+      initialNotes.push(formatNoteEntry(req, followUpParts.join(' - ')));
+    }
+
     const lead = await Lead.create({
       name: name?.trim(),
       email: email?.trim(),
@@ -91,10 +111,11 @@ export const createLead = async (req, res) => {
       year: year?.trim() || '',
       yearMakeModel: yearMakeModel?.trim() || '',
       disposition: disposition || 'Quoted',
-      notes: notes?.trim() || '',
+      notes: initialNotes.join('\n'),
       source: source || 'manual',
       followUpAt: followUpAt ? new Date(followUpAt) : null,
       followUpNote: followUpNote?.trim() || '',
+      followUpSetBy: followUpAt ? req.user?.id || null : null,
       createdBy: req.user?.id || null,
       assignedTo,
     });
@@ -203,7 +224,7 @@ export const addLeadNote = async (req, res) => {
       return res.status(404).json({ message: 'Lead not found' });
     }
 
-    lead.notes = `${lead.notes || ''}${lead.notes ? '\n' : ''}${new Date().toLocaleString()} - ${trimmedNote}`.trim();
+    appendLeadNote(lead, req, trimmedNote);
     await lead.save();
 
     const populatedLead = await Lead.findById(lead._id)
@@ -226,9 +247,21 @@ export const updateLeadFollowUp = async (req, res) => {
       return res.status(404).json({ message: 'Lead not found' });
     }
 
-    lead.followUpAt = followUpAt ? new Date(followUpAt) : null;
-    lead.followUpNote = followUpNote?.trim() || '';
+    const trimmedFollowUpNote = followUpNote?.trim() || '';
+    const nextFollowUpAt = followUpAt ? new Date(followUpAt) : null;
+
+    lead.followUpAt = nextFollowUpAt;
+    lead.followUpNote = trimmedFollowUpNote;
     lead.followUpSetBy = req.user?.id || null;
+
+    if (nextFollowUpAt) {
+      const noteParts = [`Follow-up scheduled for ${nextFollowUpAt.toLocaleString()}`];
+      if (trimmedFollowUpNote) noteParts.push(`Note: ${trimmedFollowUpNote}`);
+      appendLeadNote(lead, req, noteParts.join(' - '));
+    } else {
+      appendLeadNote(lead, req, 'Follow-up cleared');
+    }
+
     await lead.save();
 
     const populatedLead = await Lead.findById(lead._id)
@@ -237,6 +270,35 @@ export const updateLeadFollowUp = async (req, res) => {
       .lean();
 
     res.json({ message: 'Follow-up updated', lead: populatedLead });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const completeLeadFollowUp = async (req, res) => {
+  try {
+    const lead = await Lead.findById(req.params.id);
+    if (!lead) {
+      return res.status(404).json({ message: 'Lead not found' });
+    }
+
+    const completedParts = ['Follow-up completed'];
+    if (lead.followUpAt) completedParts.push(`Scheduled for ${lead.followUpAt.toLocaleString()}`);
+    if (lead.followUpNote) completedParts.push(`Note: ${lead.followUpNote}`);
+
+    lead.followUpAt = null;
+    lead.followUpNote = '';
+    lead.followUpSetBy = null;
+    lead.followUpRemindedAt = new Date();
+    appendLeadNote(lead, req, completedParts.join(' - '));
+    await lead.save();
+
+    const populatedLead = await Lead.findById(lead._id)
+      .populate('assignedTo', 'name email role')
+      .populate('createdBy', 'name email role')
+      .lean();
+
+    res.json({ message: 'Follow-up completed', lead: populatedLead });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
