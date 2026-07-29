@@ -1,7 +1,17 @@
 import FollowUp from '../model/FollowUp.js';
 import Lead from '../model/Lead.js';
 
-const syncLeadFromFollowUp = async (followUp) => {
+const getActorName = (req) => req.user?.name || req.user?.email || 'Unknown user';
+
+const formatNoteEntry = (req, text) => {
+  return `${new Date().toLocaleString()} - ${getActorName(req)}: ${text}`;
+};
+
+const appendLeadNote = (lead, req, text) => {
+  lead.notes = `${lead.notes || ''}${lead.notes ? '\n' : ''}${formatNoteEntry(req, text)}`.trim();
+};
+
+const syncLeadFromFollowUp = async (followUp, req, previousFollowUp = null) => {
   if (!followUp?.lead) return;
 
   const lead = await Lead.findById(followUp.lead);
@@ -9,6 +19,13 @@ const syncLeadFromFollowUp = async (followUp) => {
 
   if (followUp.completed) {
     if (lead.followUp && String(lead.followUp) !== String(followUp._id)) return;
+
+    if (!previousFollowUp?.completed) {
+      const completedParts = ['Follow-up completed'];
+      if (followUp.followUpDate) completedParts.push(`Scheduled for ${followUp.followUpDate.toLocaleString()}`);
+      if (followUp.note?.trim()) completedParts.push(`Note: ${followUp.note.trim()}`);
+      appendLeadNote(lead, req, completedParts.join(' - '));
+    }
 
     lead.followUp = null;
     lead.followUpAt = null;
@@ -50,8 +67,10 @@ const backfillLeadFollowUps = async (req) => {
 export const createFollowUp = async (req, res) => {
   try {
     const { name, phone, note, followUpDate, lead, contact, callLog, source } = req.body;
+    const trimmedName = name?.trim();
+    const trimmedNote = note?.trim();
 
-    if (!name || !note || !followUpDate) {
+    if (!trimmedName || !trimmedNote || !followUpDate) {
       return res.status(400).json({ message: 'Name, note, and follow-up date are required' });
     }
 
@@ -61,13 +80,13 @@ export const createFollowUp = async (req, res) => {
       contact: contact || null,
       callLog: callLog || null,
       source: source || (callLog ? 'voip' : lead ? 'lead' : 'manual'),
-      name: name.trim(),
+      name: trimmedName,
       phone: phone?.trim() || '',
-      note: note.trim(),
+      note: trimmedNote,
       followUpDate
     });
 
-    await syncLeadFromFollowUp(followUp);
+    await syncLeadFromFollowUp(followUp, req);
 
     res.status(201).json({ message: 'Follow-up created', followUp });
   } catch (error) {
@@ -91,25 +110,25 @@ export const getFollowUps = async (req, res) => {
 export const updateFollowUp = async (req, res) => {
   try {
     const { completed } = req.body;
+    const nextCompleted = Boolean(completed);
 
-    const update = {
-      completed: Boolean(completed),
-      completedAt: completed ? new Date() : null
-    };
-
-    const followUp = await FollowUp.findOneAndUpdate(
-      { _id: req.params.id, user: req.user.id },
-      update,
-      { new: true }
-    );
-
-    if (!followUp) {
+    const existingFollowUp = await FollowUp.findOne({ _id: req.params.id, user: req.user.id });
+    if (!existingFollowUp) {
       return res.status(404).json({ message: 'Follow-up not found' });
     }
 
-    await syncLeadFromFollowUp(followUp);
+    if (nextCompleted && !existingFollowUp.note?.trim()) {
+      return res.status(400).json({ message: 'A follow-up note is required before completing' });
+    }
 
-    res.json({ message: 'Follow-up updated', followUp });
+    const previousFollowUp = { completed: existingFollowUp.completed };
+    existingFollowUp.completed = nextCompleted;
+    existingFollowUp.completedAt = nextCompleted ? new Date() : null;
+    await existingFollowUp.save();
+
+    await syncLeadFromFollowUp(existingFollowUp, req, previousFollowUp);
+
+    res.json({ message: 'Follow-up updated', followUp: existingFollowUp });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

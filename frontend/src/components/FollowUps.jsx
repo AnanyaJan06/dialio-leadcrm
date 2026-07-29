@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ChevronDown,
+  FileText,
+  MessageSquare,
+  Phone,
+  ThumbsUp,
+  Trash2
+} from 'lucide-react';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
 import { confirmAction } from '../utils/confirmDialog.js';
-import { showCopiedNumberToast, showErrorToast, showSuccessToast } from '../utils/toast.js';
+import { showErrorToast, showSuccessToast } from '../utils/toast.js';
 
 import { BACKEND_URL } from '../config/api.js';
 
@@ -16,6 +24,11 @@ const emptyForm = {
 const isDue = (followUp) => (
   !followUp.completed && new Date(followUp.followUpDate) <= new Date()
 );
+
+const canUsePhone = (phone) => String(phone || '').replace(/\D/g, '').length >= 7;
+
+const actionIconClass = 'inline-flex h-7 w-7 items-center justify-center rounded-lg border border-gray-600 bg-gray-800 text-gray-300 transition hover:border-gray-500 hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500';
+const menuItemClass = 'flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-200 transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-500';
 
 const readJsonResponse = async (res) => {
   const text = await res.text();
@@ -75,6 +88,9 @@ function FollowUps({ onDueCountChange }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [selectedNote, setSelectedNote] = useState(null);
+  const [openMenuId, setOpenMenuId] = useState(null);
+  const menuRef = useRef(null);
 
   const authHeaders = useMemo(() => ({
     Authorization: `Bearer ${localStorage.getItem('token')}`
@@ -105,6 +121,28 @@ function FollowUps({ onDueCountChange }) {
     const dueCount = followUps.filter(isDue).length;
     onDueCountChange?.(dueCount);
   }, [followUps, onDueCountChange]);
+
+  useEffect(() => {
+    if (!openMenuId) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setOpenMenuId(null);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setOpenMenuId(null);
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openMenuId]);
 
   const sortedFollowUps = useMemo(() => [...followUps].sort((a, b) => {
     if (a.completed !== b.completed) return a.completed ? 1 : -1;
@@ -159,6 +197,11 @@ function FollowUps({ onDueCountChange }) {
   };
 
   const updateCompleted = async (followUp, completed) => {
+    if (completed && !followUp.note?.trim()) {
+      showErrorToast('A follow-up note is required before completing');
+      return;
+    }
+
     try {
       const res = await fetch(`${BACKEND_URL}/api/followups/${followUp._id}`, {
         method: 'PATCH',
@@ -175,7 +218,7 @@ function FollowUps({ onDueCountChange }) {
       setFollowUps((current) => current.map((item) => (
         item._id === followUp._id ? data.followUp : item
       )));
-      showSuccessToast(completed ? 'Follow-up completed' : 'Follow-up reopened');
+      showSuccessToast('Follow-up completed');
       window.dispatchEvent(new Event('refreshFollowUps'));
       window.dispatchEvent(new Event('refreshLeads'));
     } catch (error) {
@@ -212,20 +255,23 @@ function FollowUps({ onDueCountChange }) {
     }
   };
 
-  const copyPhone = async (phone) => {
-    if (!phone) return;
+  const handleCall = (phoneNumber) => {
+    if (!canUsePhone(phoneNumber)) return;
 
-    try {
-      await navigator.clipboard.writeText(phone);
-      showCopiedNumberToast({
-        phoneNumber: phone,
-        onPaste: () => window.dispatchEvent(new CustomEvent('pasteNumberOnDialer', {
-          detail: { phoneNumber: phone }
-        }))
-      });
-    } catch {
-      showErrorToast('Failed to copy phone number');
-    }
+    window.dispatchEvent(new CustomEvent('callContact', {
+      detail: { phoneNumber }
+    }));
+  };
+
+  const handleMessage = (phoneNumber) => {
+    if (!canUsePhone(phoneNumber)) return;
+
+    window.dispatchEvent(new CustomEvent('messageContact', {
+      detail: { phoneNumber }
+    }));
+    window.dispatchEvent(new CustomEvent('openConversation', {
+      detail: { phoneNumber }
+    }));
   };
 
   const formatDate = (date) => new Date(date).toLocaleString([], {
@@ -336,56 +382,112 @@ function FollowUps({ onDueCountChange }) {
           <div className="divide-y divide-gray-800">
             {sortedFollowUps.map((followUp) => {
               const due = isDue(followUp);
+              const isMenuOpen = openMenuId === followUp._id;
 
               return (
-                <div key={followUp._id} className="px-4 py-3">
-                  <div className="mb-2 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                <div key={followUp._id} className="group relative px-4 py-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
                       <p className={`truncate text-sm font-semibold ${followUp.completed ? 'text-gray-500 line-through' : 'text-white'}`}>
                         {followUp.name}
                       </p>
-                      {followUp.phone && <p className="text-xs text-gray-400">{followUp.phone}</p>}
-                      <p className="mt-1 text-xs text-gray-500">
-                        {formatDate(followUp.followUpDate)}
-                      </p>
+                      {followUp.phone && <span className="text-xs font-medium text-gray-400">{followUp.phone}</span>}
                     </div>
-                    <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${
-                      followUp.completed
-                        ? 'bg-gray-700 text-gray-300'
-                        : due
-                          ? 'bg-red-500/15 text-red-300'
-                          : 'bg-emerald-500/15 text-emerald-300'
-                    }`}>
-                      {followUp.completed ? 'Done' : due ? 'Due' : formatDate(followUp.followUpDate)}
-                    </span>
+                    {followUp.phone && (
+                      <div className="flex shrink-0 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleCall(followUp.phone)}
+                          disabled={!canUsePhone(followUp.phone)}
+                          className={actionIconClass}
+                          title={`Call ${followUp.phone}`}
+                          aria-label={`Call ${followUp.phone}`}
+                        >
+                          <Phone className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMessage(followUp.phone)}
+                          disabled={!canUsePhone(followUp.phone)}
+                          className={actionIconClass}
+                          title={`Message ${followUp.phone}`}
+                          aria-label={`Message ${followUp.phone}`}
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  <p className="text-sm text-gray-300">{followUp.note}</p>
+                  <div className="mt-1.5 flex items-center justify-between gap-2 pr-8">
+                    <div className="min-w-0 flex-1 text-xs">
+                      <span className={`font-medium ${due ? 'text-red-300' : followUp.completed ? 'text-gray-500' : 'text-gray-300'}`}>
+                        {formatDate(followUp.followUpDate)}
+                      </span>
+                    </div>
+                  </div>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {followUp.phone && (
-                      <button
-                        type="button"
-                        onClick={() => copyPhone(followUp.phone)}
-                        className="rounded-lg border border-gray-600 px-3 py-1.5 text-xs font-semibold text-gray-300 transition hover:bg-gray-700 hover:text-white"
+                  <div
+                    ref={isMenuOpen ? menuRef : null}
+                    className={`absolute bottom-2 right-3 z-20 ${isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setOpenMenuId((current) => (current === followUp._id ? null : followUp._id))}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400"
+                      title="More actions"
+                      aria-label="More actions"
+                      aria-expanded={isMenuOpen}
+                      aria-haspopup="menu"
+                    >
+                      <ChevronDown className={`h-4 w-4 transition ${isMenuOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+                    </button>
+
+                    {isMenuOpen && (
+                      <div
+                        role="menu"
+                        className="absolute bottom-full right-0 mb-1 w-36 overflow-hidden rounded-lg border border-gray-700 bg-gray-950 py-1 shadow-xl"
                       >
-                        Copy Phone
-                      </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setSelectedNote(followUp);
+                            setOpenMenuId(null);
+                          }}
+                          className={menuItemClass}
+                        >
+                          <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          Notes
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            if (followUp.completed) return;
+                            updateCompleted(followUp, true);
+                            setOpenMenuId(null);
+                          }}
+                          disabled={followUp.completed}
+                          className={menuItemClass}
+                        >
+                          <ThumbsUp className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          Completed
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            deleteFollowUp(followUp);
+                          }}
+                          className={`${menuItemClass} text-red-300 hover:text-red-200`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          Delete
+                        </button>
+                      </div>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => updateCompleted(followUp, !followUp.completed)}
-                      className="rounded-lg border border-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500 hover:text-white"
-                    >
-                      {followUp.completed ? 'Reopen' : 'Complete'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deleteFollowUp(followUp)}
-                      className="rounded-lg border border-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-300 transition hover:bg-red-500 hover:text-white"
-                    >
-                      Delete
-                    </button>
                   </div>
                 </div>
               );
@@ -393,6 +495,32 @@ function FollowUps({ onDueCountChange }) {
           </div>
         )}
       </div>
+
+      {selectedNote && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-xl border border-gray-700 bg-gray-950 shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-gray-800 px-4 py-3">
+              <div className="min-w-0">
+                <h3 className="truncate text-sm font-semibold text-white">Follow-up Note</h3>
+                <p className="mt-0.5 text-xs text-gray-400">{selectedNote.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedNote(null)}
+                className="rounded-lg px-2 py-1 text-xs font-semibold text-gray-400 transition hover:bg-gray-800 hover:text-white"
+                title="Close note"
+                aria-label="Close note"
+              >
+                X
+              </button>
+            </div>
+            <div className="space-y-2 p-4">
+              <p className="text-xs font-medium text-gray-500">{formatDate(selectedNote.followUpDate)}</p>
+              <p className="whitespace-pre-wrap text-sm leading-6 text-gray-200">{selectedNote.note}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

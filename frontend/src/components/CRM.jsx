@@ -431,6 +431,11 @@ function CRM() {
       return;
     }
 
+    if (!draft.followUpNote?.trim()) {
+      showErrorToast('Please enter a follow-up note');
+      return;
+    }
+
     try {
       setSubmittingFollowUpId(leadId);
       const res = await fetch(`${BACKEND_URL}/api/leads/${leadId}/follow-up`, {

@@ -106,6 +106,10 @@ export const createLead = async (req, res) => {
       initialNotes.push(formatNoteEntry(req, notes.trim()));
     }
     if (followUpAt) {
+      if (!followUpNote?.trim()) {
+        return res.status(400).json({ message: 'A follow-up note is required when scheduling a follow-up' });
+      }
+
       const followUpParts = [`Follow-up scheduled for ${new Date(followUpAt).toLocaleString()}`];
       if (followUpNote?.trim()) followUpParts.push(`Note: ${followUpNote.trim()}`);
       initialNotes.push(formatNoteEntry(req, followUpParts.join(' - ')));
@@ -268,6 +272,10 @@ export const updateLeadFollowUp = async (req, res) => {
     const trimmedFollowUpNote = followUpNote?.trim() || '';
     const nextFollowUpAt = followUpAt ? new Date(followUpAt) : null;
 
+    if (nextFollowUpAt && !trimmedFollowUpNote) {
+      return res.status(400).json({ message: 'A follow-up note is required when scheduling a follow-up' });
+    }
+
     lead.followUpAt = nextFollowUpAt;
     lead.followUpNote = trimmedFollowUpNote;
     lead.followUpSetBy = req.user?.id || null;
@@ -332,6 +340,10 @@ export const completeLeadFollowUp = async (req, res) => {
     const completedParts = ['Follow-up completed'];
     if (lead.followUpAt) completedParts.push(`Scheduled for ${lead.followUpAt.toLocaleString()}`);
     if (lead.followUpNote) completedParts.push(`Note: ${lead.followUpNote}`);
+
+    if (!lead.followUpNote?.trim()) {
+      return res.status(400).json({ message: 'A follow-up note is required before completing' });
+    }
 
     lead.followUpAt = null;
     lead.followUpNote = '';
