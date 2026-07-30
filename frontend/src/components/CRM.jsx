@@ -788,7 +788,7 @@ function CRM() {
         )}
 
         {!loading && leads.length > 0 && (
-          <div className="flex flex-col gap-3 border-t border-gray-800 pt-4 text-sm text-gray-400 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-4 flex flex-col gap-3 border-t border-gray-800 pt-4 text-sm text-gray-400 sm:flex-row sm:items-center sm:justify-between">
             <p>
               Showing {Math.min((paginationMeta.page - 1) * paginationMeta.limit + leads.length, paginationMeta.totalCount)} of {paginationMeta.totalCount} leads
             </p>
