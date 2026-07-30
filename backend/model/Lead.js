@@ -90,6 +90,11 @@ const leadSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    followUp: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'FollowUp',
+      default: null,
+    },
     followUpNote: {
       type: String,
       trim: true,

@@ -395,6 +395,7 @@ function CallHistory() {
     setFollowUpDraft({
       name: formatPhoneNumber(log.phoneNumber),
       phone: log.phoneNumber,
+      callLog: log._id || null,
       note: `Follow up about ${getCallMeta(log).directionLabel.toLowerCase()} call from ${formatDateTime(getCallDate(log))}.`,
       followUpDate: getDefaultFollowUpDate()
     });
@@ -434,6 +435,7 @@ function CallHistory() {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({
+          callLog: followUpDraft.callLog || null,
           name: followUpDraft.name.trim(),
           phone: followUpDraft.phone.trim(),
           note: followUpDraft.note.trim(),

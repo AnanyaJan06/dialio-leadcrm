@@ -1,4 +1,5 @@
 import Lead from '../model/Lead.js';
+import FollowUp from '../model/FollowUp.js';
 import User from '../model/User.js';
 import LeadAssignmentState from '../model/LeadAssignmentState.js';
 
@@ -61,6 +62,16 @@ const appendLeadNote = (lead, req, text) => {
   lead.notes = `${lead.notes || ''}${lead.notes ? '\n' : ''}${formatNoteEntry(req, text)}`.trim();
 };
 
+const populateLead = (id) => Lead.findById(id)
+  .populate('assignedTo', 'name email role')
+  .populate('createdBy', 'name email role')
+  .populate('followUp')
+  .lean();
+
+const getFollowUpOwner = (lead, req) => lead.assignedTo || req.user?.id || null;
+
+const getFollowUpNote = (lead, fallbackNote = '') => fallbackNote || `Follow up with ${lead.name}`;
+
 export const createLead = async (req, res) => {
   try {
     const {
@@ -95,6 +106,10 @@ export const createLead = async (req, res) => {
       initialNotes.push(formatNoteEntry(req, notes.trim()));
     }
     if (followUpAt) {
+      if (!followUpNote?.trim()) {
+        return res.status(400).json({ message: 'A follow-up note is required when scheduling a follow-up' });
+      }
+
       const followUpParts = [`Follow-up scheduled for ${new Date(followUpAt).toLocaleString()}`];
       if (followUpNote?.trim()) followUpParts.push(`Note: ${followUpNote.trim()}`);
       initialNotes.push(formatNoteEntry(req, followUpParts.join(' - ')));
@@ -120,10 +135,22 @@ export const createLead = async (req, res) => {
       assignedTo,
     });
 
-    const populatedLead = await Lead.findById(lead._id)
-      .populate('assignedTo', 'name email role')
-      .populate('createdBy', 'name email role')
-      .lean();
+    if (lead.followUpAt) {
+      const followUp = await FollowUp.create({
+        user: getFollowUpOwner(lead, req),
+        lead: lead._id,
+        source: 'lead',
+        name: lead.name,
+        phone: lead.phone,
+        note: getFollowUpNote(lead, lead.followUpNote),
+        followUpDate: lead.followUpAt,
+      });
+
+      lead.followUp = followUp._id;
+      await lead.save();
+    }
+
+    const populatedLead = await populateLead(lead._id);
 
     emitLeadAssigned(req, populatedLead);
 
@@ -181,6 +208,7 @@ export const getLeads = async (req, res) => {
     const leads = await Lead.find(filter)
       .populate('assignedTo', 'name email role')
       .populate('createdBy', 'name email role')
+      .populate('followUp')
       .sort({ createdAt: -1 })
       .skip((safePage - 1) * normalizedLimit)
       .limit(normalizedLimit)
@@ -216,10 +244,7 @@ export const updateLeadDisposition = async (req, res) => {
       return res.status(404).json({ message: 'Lead not found' });
     }
 
-    const populatedLead = await Lead.findById(lead._id)
-      .populate('assignedTo', 'name email role')
-      .populate('createdBy', 'name email role')
-      .lean();
+    const populatedLead = await populateLead(lead._id);
 
     res.json({ message: 'Lead status updated', lead: populatedLead });
   } catch (error) {
@@ -244,10 +269,7 @@ export const addLeadNote = async (req, res) => {
     appendLeadNote(lead, req, trimmedNote);
     await lead.save();
 
-    const populatedLead = await Lead.findById(lead._id)
-      .populate('assignedTo', 'name email role')
-      .populate('createdBy', 'name email role')
-      .lean();
+    const populatedLead = await populateLead(lead._id);
 
     res.json({ message: 'Note added', lead: populatedLead });
   } catch (error) {
@@ -267,6 +289,10 @@ export const updateLeadFollowUp = async (req, res) => {
     const trimmedFollowUpNote = followUpNote?.trim() || '';
     const nextFollowUpAt = followUpAt ? new Date(followUpAt) : null;
 
+    if (nextFollowUpAt && !trimmedFollowUpNote) {
+      return res.status(400).json({ message: 'A follow-up note is required when scheduling a follow-up' });
+    }
+
     lead.followUpAt = nextFollowUpAt;
     lead.followUpNote = trimmedFollowUpNote;
     lead.followUpSetBy = req.user?.id || null;
@@ -281,10 +307,39 @@ export const updateLeadFollowUp = async (req, res) => {
 
     await lead.save();
 
-    const populatedLead = await Lead.findById(lead._id)
-      .populate('assignedTo', 'name email role')
-      .populate('createdBy', 'name email role')
-      .lean();
+    if (nextFollowUpAt) {
+      const followUpPayload = {
+        user: getFollowUpOwner(lead, req),
+        lead: lead._id,
+        source: 'lead',
+        name: lead.name,
+        phone: lead.phone,
+        note: getFollowUpNote(lead, trimmedFollowUpNote),
+        followUpDate: nextFollowUpAt,
+        completed: false,
+        completedAt: null,
+      };
+
+      let followUp = lead.followUp
+        ? await FollowUp.findByIdAndUpdate(lead.followUp, followUpPayload, { new: true, runValidators: true })
+        : null;
+
+      if (!followUp) {
+        followUp = await FollowUp.create(followUpPayload);
+      }
+
+      lead.followUp = followUp._id;
+      await lead.save();
+    } else if (lead.followUp) {
+      await FollowUp.findByIdAndUpdate(lead.followUp, {
+        completed: true,
+        completedAt: new Date(),
+      });
+      lead.followUp = null;
+      await lead.save();
+    }
+
+    const populatedLead = await populateLead(lead._id);
 
     res.json({ message: 'Follow-up updated', lead: populatedLead });
   } catch (error) {
@@ -303,17 +358,27 @@ export const completeLeadFollowUp = async (req, res) => {
     if (lead.followUpAt) completedParts.push(`Scheduled for ${lead.followUpAt.toLocaleString()}`);
     if (lead.followUpNote) completedParts.push(`Note: ${lead.followUpNote}`);
 
+    if (!lead.followUpNote?.trim()) {
+      return res.status(400).json({ message: 'A follow-up note is required before completing' });
+    }
+
     lead.followUpAt = null;
     lead.followUpNote = '';
     lead.followUpSetBy = null;
     lead.followUpRemindedAt = new Date();
     appendLeadNote(lead, req, completedParts.join(' - '));
+
+    if (lead.followUp) {
+      await FollowUp.findByIdAndUpdate(lead.followUp, {
+        completed: true,
+        completedAt: lead.followUpRemindedAt,
+      });
+      lead.followUp = null;
+    }
+
     await lead.save();
 
-    const populatedLead = await Lead.findById(lead._id)
-      .populate('assignedTo', 'name email role')
-      .populate('createdBy', 'name email role')
-      .lean();
+    const populatedLead = await populateLead(lead._id);
 
     res.json({ message: 'Follow-up completed', lead: populatedLead });
   } catch (error) {
