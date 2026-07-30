@@ -91,12 +91,11 @@ export const createLead = async (req, res) => {
       followUpNote,
     } = req.body;
 
-    const isAdmin = req.user?.role === 'admin';
     let assignedTo = null;
 
-    if (isAdmin) {
-      const nextUser = await getNextAssignee();
-      assignedTo = nextUser?._id || null;
+    const nextUser = await getNextAssignee();
+    if (nextUser?._id) {
+      assignedTo = nextUser._id;
     } else {
       assignedTo = req.user?.id || null;
     }
