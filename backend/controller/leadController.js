@@ -14,6 +14,8 @@ const LEAD_DISPOSITIONS = [
   'Already ordered',
 ];
 
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const getAssignableUsers = async () => {
   return User.find({
     role: 'agent',
@@ -179,13 +181,15 @@ export const getLeads = async (req, res) => {
     if (search) {
       const term = String(search).trim();
       if (term) {
+        const regex = { $regex: escapeRegex(term), $options: 'i' };
         filter.$or = [
-          { name: { $regex: term, $options: 'i' } },
-          { phone: { $regex: term, $options: 'i' } },
-          { partRequested: { $regex: term, $options: 'i' } },
-          { make: { $regex: term, $options: 'i' } },
-          { model: { $regex: term, $options: 'i' } },
-          { zip: { $regex: term, $options: 'i' } },
+          { name: regex },
+          { email: regex },
+          { phone: regex },
+          { partRequested: regex },
+          { make: regex },
+          { model: regex },
+          { zip: regex },
         ];
       }
     }
@@ -368,3 +372,4 @@ export const completeLeadFollowUp = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+

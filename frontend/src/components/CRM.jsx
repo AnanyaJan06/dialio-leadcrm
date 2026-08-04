@@ -545,7 +545,7 @@ function CRM() {
             name="search"
             value={filters.search}
             onChange={handleFilterChange}
-            placeholder="Search leads"
+            placeholder="Search name, email, phone, part"
             className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white"
           />
           <select name="status" value={filters.status} onChange={handleFilterChange} className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white">
@@ -837,3 +837,4 @@ function CRM() {
 }
 
 export default CRM;
+
