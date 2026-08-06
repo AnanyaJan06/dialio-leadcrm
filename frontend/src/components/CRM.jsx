@@ -232,12 +232,14 @@ function CRM() {
   const [submittingNoteId, setSubmittingNoteId] = useState(null);
   const [submittingFollowUpId, setSubmittingFollowUpId] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [paginationMeta, setPaginationMeta] = useState({ page: 1, limit: 3, totalCount: 0, totalPages: 1 });
 
   const authHeaders = useMemo(() => ({
     Authorization: `Bearer ${localStorage.getItem('token')}`,
   }), []);
 
-  const fetchLeads = useCallback(async (filtersToApply = appliedFilters) => {
+  const fetchLeads = useCallback(async (filtersToApply = appliedFilters, pageToUse = currentPage) => {
     try {
       const params = new URLSearchParams();
       if (filtersToApply.status) params.set('status', filtersToApply.status);
@@ -246,6 +248,8 @@ function CRM() {
       if (filtersToApply.fromDate) params.set('fromDate', filtersToApply.fromDate);
       if (filtersToApply.toDate) params.set('toDate', filtersToApply.toDate);
       if (filtersToApply.search) params.set('search', filtersToApply.search);
+      params.set('page', String(pageToUse));
+      params.set('limit', '3');
 
       const res = await fetch(`${BACKEND_URL}/api/leads${params.toString() ? `?${params.toString()}` : ''}`, {
         headers: authHeaders,
@@ -253,13 +257,21 @@ function CRM() {
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.message || 'Failed to load leads');
-      setLeads(Array.isArray(data) ? data : []);
+      const payload = data && typeof data === 'object' && Array.isArray(data.leads) ? data : { leads: Array.isArray(data) ? data : [], page: 1, limit: 3, totalCount: Array.isArray(data) ? data.length : 0, totalPages: 1 };
+      setLeads(payload.leads || []);
+      setPaginationMeta({
+        page: Number(payload.page) || 1,
+        limit: Number(payload.limit) || 3,
+        totalCount: Number(payload.totalCount) || 0,
+        totalPages: Number(payload.totalPages) || 1,
+      });
+      setCurrentPage(Number(payload.page) || 1);
     } catch (error) {
       showErrorToast(error.message || 'Failed to load leads');
     } finally {
       setLoading(false);
     }
-  }, [appliedFilters, authHeaders]);
+  }, [appliedFilters, authHeaders, currentPage]);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -291,14 +303,14 @@ function CRM() {
   }, [authHeaders]);
 
   useEffect(() => {
-    fetchLeads(appliedFilters);
+    fetchLeads(appliedFilters, currentPage);
     fetchUsers();
     fetchCurrentUser();
-  }, [appliedFilters, fetchCurrentUser, fetchLeads, fetchUsers]);
+  }, [appliedFilters, currentPage, fetchCurrentUser, fetchLeads, fetchUsers]);
 
   useEffect(() => {
     const handleRefreshLeads = () => {
-      fetchLeads(appliedFilters);
+      fetchLeads(appliedFilters, currentPage);
     };
 
     window.addEventListener('refreshLeads', handleRefreshLeads);
@@ -323,11 +335,13 @@ function CRM() {
 
   const handleApplyFilters = (event) => {
     event.preventDefault();
+    setCurrentPage(1);
     setAppliedFilters(filters);
   };
 
   const handleResetFilters = () => {
     setFilters(emptyFilters);
+    setCurrentPage(1);
     setAppliedFilters(emptyFilters);
   };
 
@@ -355,8 +369,9 @@ function CRM() {
 
       setForm(emptyForm);
       setShowCreateForm(false);
+      setCurrentPage(1);
       showSuccessToast(currentUser?.role === 'admin' ? 'Lead created and assigned to the next active agent' : 'Lead created successfully');
-      fetchLeads(appliedFilters);
+      fetchLeads(appliedFilters, 1);
     } catch (error) {
       showErrorToast(error.message || 'Failed to create lead');
     } finally {
@@ -769,6 +784,35 @@ function CRM() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {!loading && leads.length > 0 && (
+          <div className="mt-4 flex flex-col gap-3 border-t border-gray-800 pt-4 text-sm text-gray-400 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              Showing {Math.min((paginationMeta.page - 1) * paginationMeta.limit + leads.length, paginationMeta.totalCount)} of {paginationMeta.totalCount} leads
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((value) => Math.max(1, value - 1))}
+                disabled={currentPage <= 1}
+                className="rounded-xl border border-gray-700 px-3 py-2 font-semibold text-gray-300 transition hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span className="rounded-xl border border-gray-800 bg-gray-950 px-3 py-2 text-gray-300">
+                Page {paginationMeta.page} / {paginationMeta.totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((value) => Math.min(paginationMeta.totalPages, value + 1))}
+                disabled={currentPage >= paginationMeta.totalPages}
+                className="rounded-xl border border-gray-700 px-3 py-2 font-semibold text-gray-300 transition hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
           </div>
         )}
       </div>

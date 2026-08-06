@@ -93,12 +93,11 @@ export const createLead = async (req, res) => {
       followUpNote,
     } = req.body;
 
-    const isAdmin = req.user?.role === 'admin';
     let assignedTo = null;
 
-    if (isAdmin) {
-      const nextUser = await getNextAssignee();
-      assignedTo = nextUser?._id || null;
+    const nextUser = await getNextAssignee();
+    if (nextUser?._id) {
+      assignedTo = nextUser._id;
     } else {
       assignedTo = req.user?.id || null;
     }
@@ -171,6 +170,8 @@ export const getLeads = async (req, res) => {
       fromDate,
       toDate,
       search,
+      page,
+      limit,
     } = req.query;
 
     const filter = {};
@@ -200,14 +201,29 @@ export const getLeads = async (req, res) => {
       if (toDate) filter.createdAt.$lte = new Date(toDate);
     }
 
+    const normalizedPage = Math.max(1, Number(page) || 1);
+    const normalizedLimit = Math.min(50, Math.max(1, Number(limit) || 3));
+
+    const totalCount = await Lead.countDocuments(filter);
+    const totalPages = Math.max(1, Math.ceil(totalCount / normalizedLimit));
+    const safePage = Math.min(normalizedPage, totalPages);
+
     const leads = await Lead.find(filter)
       .populate('assignedTo', 'name email role')
       .populate('createdBy', 'name email role')
       .populate('followUp')
       .sort({ createdAt: -1 })
+      .skip((safePage - 1) * normalizedLimit)
+      .limit(normalizedLimit)
       .lean();
 
-    res.json(leads);
+    res.json({
+      leads,
+      page: safePage,
+      limit: normalizedLimit,
+      totalCount,
+      totalPages,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
