@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
+import { CalendarCheck, LayoutDashboard, MessageSquare, Moon, PhoneCall, Plus, Settings as SettingsIcon, Sun, TableProperties, Users, UsersRound } from 'lucide-react';
 import { io } from 'socket.io-client';
 import Dialer from './components/Dialer.jsx';
 import CallHistory from './components/CallHistory.jsx';
@@ -101,107 +102,23 @@ const stopFollowUpReminderAlarm = () => {
   followUpAlarm.audioContext = null;
 };
 function NavIcon({ type }) {
-  const common = {
-    className: 'h-5 w-5',
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: '2',
-    strokeLinecap: 'round',
-    strokeLinejoin: 'round',
-    'aria-hidden': 'true'
-  }; 
-
   const icons = {
-    history: (
-      <svg {...common}>
-        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.62 2.61a2 2 0 0 1-.45 2.11L8 9.72" />
-      </svg>
-    ),
-    contacts: (
-      <svg {...common}>
-        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
-    ),
-    messages: (
-      <svg {...common}>
-        <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
-      </svg>
-    ),
-    crm: (
-      <svg {...common}>
-        <path d="M4 4h16" />
-        <path d="M7 4v16" />
-        <path d="M17 4v16" />
-        <path d="M4 20h16" />
-        <path d="M10 8h4" />
-        <path d="M10 12h4" />
-        <path d="M10 16h4" />
-      </svg>
-    ),
-    team: (
-      <svg {...common}>
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
-    ),
-    followups: (
-      <svg {...common}>
-        <path d="M8 2v4" />
-        <path d="M16 2v4" />
-        <rect x="3" y="4" width="18" height="18" rx="2" />
-        <path d="M3 10h18" />
-        <path d="m9 16 2 2 4-4" />
-      </svg>
-    ),
-    admin: (
-      <svg {...common}>
-        <rect x="3" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="14" width="7" height="7" rx="1" />
-        <rect x="3" y="14" width="7" height="7" rx="1" />
-      </svg>
-    ),
-    settings: (
-      <svg {...common}>
-        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.72l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" />
-        <circle cx="12" cy="12" r="3" />
-      </svg>
-    ),
-    plus: (
-      <svg {...common}>
-        <path d="M5 12h14" />
-        <path d="M12 5v14" />
-      </svg>
-    ),
-    sun: (
-      <svg {...common}>
-        <circle cx="12" cy="12" r="4" />
-        <path d="M12 2v2" />
-        <path d="M12 20v2" />
-        <path d="m4.93 4.93 1.41 1.41" />
-        <path d="m17.66 17.66 1.41 1.41" />
-        <path d="M2 12h2" />
-        <path d="M20 12h2" />
-        <path d="m6.34 17.66-1.41 1.41" />
-        <path d="m19.07 4.93-1.41 1.41" />
-      </svg>
-    ),
-    moon: (
-      <svg {...common}>
-        <path d="M12 3a6 6 0 0 0 9 7.4A9 9 0 1 1 12 3Z" />
-      </svg>
-    )
+    history: PhoneCall,
+    contacts: Users,
+    messages: MessageSquare,
+    crm: TableProperties,
+    team: UsersRound,
+    followups: CalendarCheck,
+    admin: LayoutDashboard,
+    settings: SettingsIcon,
+    plus: Plus,
+    sun: Sun,
+    moon: Moon
   };
 
-  return icons[type];
+  const Icon = icons[type] || PhoneCall;
+  return <Icon className="h-5 w-5" aria-hidden="true" />;
 }
-
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [activeTab, setActiveTab] = useState('history');
@@ -213,7 +130,7 @@ function App() {
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [unreadTeamMessages, setUnreadTeamMessages] = useState(0);
   const [dueFollowUps, setDueFollowUps] = useState(0);
-  const [showDialerModal, setShowDialerModal] = useState(false);   // ← New state
+  const [showDialerModal, setShowDialerModal] = useState(false);   // â† New state
   const [currentUser, setCurrentUser] = useState(null);
   const activeTabRef = useRef(activeTab);
   const currentUserRef = useRef(currentUser);

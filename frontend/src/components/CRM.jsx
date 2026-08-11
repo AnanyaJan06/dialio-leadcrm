@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { History } from 'lucide-react';
+import { CalendarCheck, History, MessageSquare, PencilLine, Phone } from 'lucide-react';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
 import LeadCallLogsDrawer from './LeadCallLogsDrawer.jsx';
@@ -95,79 +95,6 @@ const formatSourceTooltip = (source) => {
 };
 
 const canUsePhone = (phone) => String(phone || '').replace(/\D/g, '').length >= 7;
-
-function PhoneIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.62 2.61a2 2 0 0 1-.45 2.11L8 9.72" />
-    </svg>
-  );
-}
-
-function MessageIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
-    </svg>
-  );
-}
-
-function NoteIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  );
-}
-
-function FollowUpIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8 2v4" />
-      <path d="M16 2v4" />
-      <rect x="3" y="4" width="18" height="18" rx="2" />
-      <path d="M3 10h18" />
-      <path d="m9 16 2 2 4-4" />
-    </svg>
-  );
-}
 
 const parseLeadNotes = (notes = '') => {
   return String(notes || '')
@@ -631,7 +558,7 @@ function CRM() {
                           title={noteLeadId === lead._id ? 'Close notes' : 'Open notes'}
                           aria-label={noteLeadId === lead._id ? 'Close notes' : 'Open notes'}
                         >
-                          <NoteIcon />
+                          <PencilLine className="h-4 w-4" aria-hidden="true" />
                         </button>
                         <button
                           type="button"
@@ -659,7 +586,7 @@ function CRM() {
                           title={followUpLeadId === lead._id ? 'Hide reminder editor' : 'Schedule follow-up'}
                           aria-label={followUpLeadId === lead._id ? 'Hide reminder editor' : 'Schedule follow-up'}
                         >
-                          <FollowUpIcon />
+                          <CalendarCheck className="h-4 w-4" aria-hidden="true" />
                         </button>
                         <button
                           type="button"
@@ -729,7 +656,7 @@ function CRM() {
                         title={hasUsablePhone ? `Call ${lead.phone}` : 'No phone number'}
                         aria-label={hasUsablePhone ? `Call ${lead.phone}` : 'No phone number to call'}
                       >
-                        <PhoneIcon />
+                        <Phone className="h-4 w-4" aria-hidden="true" />
                         Make Call
                       </button>
 
@@ -741,7 +668,7 @@ function CRM() {
                         title={hasUsablePhone ? `Open SMS for ${lead.phone}` : 'No phone number'}
                         aria-label={hasUsablePhone ? `Open SMS for ${lead.phone}` : 'No phone number to message'}
                       >
-                        <MessageIcon />
+                        <MessageSquare className="h-4 w-4" aria-hidden="true" />
                         Open SMS
                       </button>
                     </div>

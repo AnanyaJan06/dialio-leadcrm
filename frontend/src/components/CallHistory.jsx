@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, useEffect } from 'react';
+import { CalendarCheck, Copy, FileText, MessageSquare, Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing } from 'lucide-react';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import LoadingSpinner from './LoadingSpinner.jsx';
 import { buildPagedUrl, PAGE_SIZE, parsePagedResponse } from '../utils/pagination.js';
@@ -63,139 +64,20 @@ const speakerBadgeStyles = {
 };
 
 function DirectionIcon({ type }) {
-  const common = {
-    className: 'w-4 h-4',
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: '2',
-    strokeLinecap: 'round',
-    strokeLinejoin: 'round',
-    'aria-hidden': 'true'
-  };
+  const Icon = type === 'outbound'
+    ? PhoneOutgoing
+    : ['missed', 'rejected', 'failed', 'answered-by-teammate'].includes(type)
+      ? PhoneMissed
+      : PhoneIncoming;
 
-  if (type === 'outbound') {
-    return (
-      <svg {...common}>
-        <path d="M7 17L17 7" />
-        <path d="M8 7h9v9" />
-        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.62 2.61a2 2 0 0 1-.45 2.11L8 9.72" />
-      </svg>
-    );
-  }
-
-  if (type === 'missed' || type === 'rejected' || type === 'failed' || type === 'answered-by-teammate') {
-    return (
-      <svg {...common}>
-        <path d="M16 2v6h6" />
-        <path d="M22 2l-6 6" />
-        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.62 2.61a2 2 0 0 1-.45 2.11L8 9.72" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg {...common}>
-      <path d="M17 7L7 17" />
-      <path d="M7 8v9h9" />
-      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.62 2.61a2 2 0 0 1-.45 2.11L8 9.72" />
-    </svg>
-  );
+  return <Icon className="h-4 w-4" aria-hidden="true" />;
 }
 
-function PhoneIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.62 2.61a2 2 0 0 1-.45 2.11L8 9.72" />
-    </svg>
-  );
-}
-
-function MessageIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
-    </svg>
-  );
-}
-
-function CopyIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="9" y="9" width="13" height="13" rx="2" />
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-    </svg>
-  );
-}
-
-function FollowUpIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8 2v4" />
-      <path d="M16 2v4" />
-      <rect x="3" y="4" width="18" height="18" rx="2" />
-      <path d="M3 10h18" />
-      <path d="M9 16l2 2 4-4" />
-    </svg>
-  );
-}
-
-function TranscriptIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <path d="M14 2v6h6" />
-      <path d="M8 13h8" />
-      <path d="M8 17h6" />
-    </svg>
-  );
-}
-
+const PhoneIcon = () => <Phone className="h-4 w-4" aria-hidden="true" />;
+const MessageIcon = () => <MessageSquare className="h-4 w-4" aria-hidden="true" />;
+const CopyIcon = () => <Copy className="h-4 w-4" aria-hidden="true" />;
+const FollowUpIcon = () => <CalendarCheck className="h-4 w-4" aria-hidden="true" />;
+const TranscriptIcon = () => <FileText className="h-4 w-4" aria-hidden="true" />;
 function CallHistorySkeleton() {
   const rows = Array.from({ length: 7 }, (_, index) => index);
 

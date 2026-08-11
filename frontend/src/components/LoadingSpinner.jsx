@@ -1,3 +1,5 @@
+import { Loader2 } from 'lucide-react';
+
 function LoadingSpinner({ label = 'Loading', size = 'md', tone = 'emerald', inline = false }) {
   const sizeClass = {
     sm: 'h-4 w-4',
@@ -11,21 +13,7 @@ function LoadingSpinner({ label = 'Loading', size = 'md', tone = 'emerald', inli
   }[tone];
 
   const spinner = (
-    <svg
-      className={`${sizeClass} ${toneClass} animate-spin`}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <circle className="opacity-20" cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" />
-      <path
-        className="opacity-90"
-        d="M21 12a9 9 0 0 0-9-9"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-    </svg>
+    <Loader2 className={`${sizeClass} ${toneClass} animate-spin`} aria-hidden="true" />
   );
 
   if (inline) {
