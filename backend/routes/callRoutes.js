@@ -9,4 +9,4 @@ router.post('/answer', authMiddleware, markCallAnswered);
 router.get('/session/:callSid', authMiddleware, getInboundSession);
 router.get('/logs', authMiddleware, getCallLogs);
 
-export default router;
+export default router;   
