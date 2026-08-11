@@ -34,6 +34,38 @@ const readJsonResponse = async (res) => {
   }
 };
 
+/** Soft two-tone ding generated in the browser (no audio file). */
+const playFollowUpBeep = () => {
+  try {
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    const ctx = new AudioContextCtor();
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const now = ctx.currentTime;
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(880, now);
+    oscillator.frequency.setValueAtTime(1174.66, now + 0.12);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+
+    oscillator.start(now);
+    oscillator.stop(now + 0.36);
+    oscillator.onended = () => {
+      void ctx.close();
+    };
+  } catch (err) {
+    console.info('Follow-up reminder sound failed:', err);
+  }
+};
+
 function NavIcon({ type }) {
   const common = {
     className: 'h-5 w-5',
@@ -272,8 +304,10 @@ function App() {
 
       setDueFollowUps(dueItems.length);
 
+      // Keep reminding (toast + beep) every poll until completed or deleted.
       if (dueItems.length > 0 && activeTabRef.current !== 'followups') {
         setFollowUpToast(dueItems[0]);
+        playFollowUpBeep();
         window.clearTimeout(followUpToastTimerRef.current);
         followUpToastTimerRef.current = window.setTimeout(() => {
           setFollowUpToast(null);
