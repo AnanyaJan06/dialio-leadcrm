@@ -13,7 +13,13 @@ import AppToaster from './components/ui/AppToaster.jsx';
 import Settings from './pages/Settings.jsx';
 import Login from './pages/Login.jsx';
 import { confirmAction } from './utils/confirmDialog.js';
-import { showIncomingSmsToast, showSuccessToast, showTeamMessageToast } from './utils/toast.js';
+import {
+  dismissFollowUpReminderToast,
+  showFollowUpReminderToast,
+  showIncomingSmsToast,
+  showSuccessToast,
+  showTeamMessageToast
+} from './utils/toast.js';
 import './App.css';
 import { BACKEND_URL } from './config/api.js';
 
@@ -34,13 +40,26 @@ const readJsonResponse = async (res) => {
   }
 };
 
-/** Soft two-tone ding generated in the browser (no audio file). */
+const followUpAlarm = {
+  audioContext: null,
+  intervalId: null
+};
+
+/** Repeating soft two-tone beep generated in the browser (no audio file). */
 const playFollowUpBeep = () => {
   try {
     const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextCtor) return;
 
-    const ctx = new AudioContextCtor();
+    if (!followUpAlarm.audioContext || followUpAlarm.audioContext.state === 'closed') {
+      followUpAlarm.audioContext = new AudioContextCtor();
+    }
+
+    const ctx = followUpAlarm.audioContext;
+    if (ctx.state === 'suspended') {
+      void ctx.resume();
+    }
+
     const oscillator = ctx.createOscillator();
     const gain = ctx.createGain();
     const now = ctx.currentTime;
@@ -58,14 +77,29 @@ const playFollowUpBeep = () => {
 
     oscillator.start(now);
     oscillator.stop(now + 0.36);
-    oscillator.onended = () => {
-      void ctx.close();
-    };
   } catch (err) {
     console.info('Follow-up reminder sound failed:', err);
   }
 };
 
+const startFollowUpReminderAlarm = () => {
+  if (followUpAlarm.intervalId) return;
+
+  playFollowUpBeep();
+  followUpAlarm.intervalId = window.setInterval(playFollowUpBeep, 1200);
+};
+
+const stopFollowUpReminderAlarm = () => {
+  if (followUpAlarm.intervalId) {
+    window.clearInterval(followUpAlarm.intervalId);
+    followUpAlarm.intervalId = null;
+  }
+
+  if (followUpAlarm.audioContext && followUpAlarm.audioContext.state !== 'closed') {
+    void followUpAlarm.audioContext.close();
+  }
+  followUpAlarm.audioContext = null;
+};
 function NavIcon({ type }) {
   const common = {
     className: 'h-5 w-5',
@@ -179,13 +213,11 @@ function App() {
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [unreadTeamMessages, setUnreadTeamMessages] = useState(0);
   const [dueFollowUps, setDueFollowUps] = useState(0);
-  const [followUpToast, setFollowUpToast] = useState(null);
   const [showDialerModal, setShowDialerModal] = useState(false);   // ← New state
   const [currentUser, setCurrentUser] = useState(null);
   const activeTabRef = useRef(activeTab);
   const currentUserRef = useRef(currentUser);
   const selectedTeamUserRef = useRef(selectedTeamUser);
-  const followUpToastTimerRef = useRef(null);
   const isAdmin = currentUser?.role === 'admin';
 
   const openTab = useCallback((tabId) => {
@@ -199,6 +231,9 @@ function App() {
     if (tabId === 'team') {
       setUnreadTeamMessages(0);
       window.dispatchEvent(new Event('refreshInternalMessages'));
+    }
+    if (tabId === 'followups') {
+      dismissFollowUpReminderToast();
     }
   }, []);
 
@@ -304,32 +339,42 @@ function App() {
 
       setDueFollowUps(dueItems.length);
 
-      // Keep reminding (toast + beep) every poll until completed or deleted.
-      if (dueItems.length > 0 && activeTabRef.current !== 'followups') {
-        setFollowUpToast(dueItems[0]);
-        playFollowUpBeep();
-        window.clearTimeout(followUpToastTimerRef.current);
-        followUpToastTimerRef.current = window.setTimeout(() => {
-          setFollowUpToast(null);
-        }, 7000);
+      if (dueItems.length > 0) {
+        startFollowUpReminderAlarm();
+
+        if (activeTabRef.current !== 'followups') {
+          const firstDue = dueItems[0];
+          showFollowUpReminderToast({
+            name: firstDue.name,
+            note: firstDue.note,
+            dueCount: dueItems.length,
+            onClick: () => openTab('followups')
+          });
+        } else {
+          dismissFollowUpReminderToast();
+        }
+      } else {
+        stopFollowUpReminderAlarm();
+        dismissFollowUpReminderToast();
       }
     } catch (error) {
       console.error('Failed to refresh follow-up reminders:', error);
     }
-  }, [token]);
+  }, [openTab, token]);
 
   useEffect(() => {
     if (!token) return undefined;
 
     const initialRefresh = window.setTimeout(refreshDueFollowUps, 0);
-    const interval = window.setInterval(refreshDueFollowUps, 60000);
+    const interval = window.setInterval(refreshDueFollowUps, 5000);
     window.addEventListener('refreshFollowUps', refreshDueFollowUps);
 
     return () => {
       window.clearTimeout(initialRefresh);
       window.clearInterval(interval);
-      window.clearTimeout(followUpToastTimerRef.current);
       window.removeEventListener('refreshFollowUps', refreshDueFollowUps);
+      stopFollowUpReminderAlarm();
+      dismissFollowUpReminderToast();
     };
   }, [refreshDueFollowUps, token]);
 
@@ -515,7 +560,8 @@ function App() {
     setUnreadMessages(0);
     setUnreadTeamMessages(0);
     setDueFollowUps(0);
-    setFollowUpToast(null);
+    stopFollowUpReminderAlarm();
+    dismissFollowUpReminderToast();
     setCurrentUser(null);
   };
 
@@ -719,29 +765,6 @@ function App() {
         currentUser={currentUser}
       />
 
-      {followUpToast && (
-        <button
-          type="button"
-          onClick={() => {
-            openTab('followups');
-            setFollowUpToast(null);
-          }}
-          className="fixed right-4 top-4 z-[70] w-[min(360px,calc(100vw-2rem))] rounded-2xl border border-amber-500/25 bg-[#151B28] p-4 text-left shadow-2xl transition hover:border-amber-400"
-        >
-          <div className="mb-2 flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/15 text-amber-300">
-              <NavIcon type="followups" />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold text-white">Follow-up reminder</span>
-              <span className="block truncate text-xs text-gray-400">{followUpToast.name}</span>
-            </span>
-          </div>
-          <p className="line-clamp-2 text-sm text-gray-300">
-            {followUpToast.note}
-          </p>
-        </button>
-      )}
       <AppToaster />
     </div>
   );
