@@ -5,7 +5,8 @@ import {
   MessageSquare,
   Phone,
   ThumbsUp,
-  Trash2
+  Trash2,
+  X
 } from 'lucide-react';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
@@ -393,30 +394,41 @@ function FollowUps({ onDueCountChange }) {
                       </p>
                       {followUp.phone && <span className="text-xs font-medium text-gray-400">{followUp.phone}</span>}
                     </div>
-                    {followUp.phone && (
-                      <div className="flex shrink-0 gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleCall(followUp.phone)}
-                          disabled={!canUsePhone(followUp.phone)}
-                          className={actionIconClass}
-                          title={`Call ${followUp.phone}`}
-                          aria-label={`Call ${followUp.phone}`}
-                        >
-                          <Phone className="h-3.5 w-3.5" aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleMessage(followUp.phone)}
-                          disabled={!canUsePhone(followUp.phone)}
-                          className={actionIconClass}
-                          title={`Message ${followUp.phone}`}
-                          aria-label={`Message ${followUp.phone}`}
-                        >
-                          <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex shrink-0 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedNote(followUp)}
+                        className={actionIconClass}
+                        title="View note"
+                        aria-label="View note"
+                      >
+                        <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                      {followUp.phone && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleCall(followUp.phone)}
+                            disabled={!canUsePhone(followUp.phone)}
+                            className={actionIconClass}
+                            title={`Call ${followUp.phone}`}
+                            aria-label={`Call ${followUp.phone}`}
+                          >
+                            <Phone className="h-3.5 w-3.5" aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMessage(followUp.phone)}
+                            disabled={!canUsePhone(followUp.phone)}
+                            className={actionIconClass}
+                            title={`Message ${followUp.phone}`}
+                            aria-label={`Message ${followUp.phone}`}
+                          >
+                            <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   <div className="mt-1.5 flex items-center justify-between gap-2 pr-8">
@@ -448,18 +460,6 @@ function FollowUps({ onDueCountChange }) {
                         role="menu"
                         className="absolute bottom-full right-0 mb-1 w-36 overflow-hidden rounded-lg border border-gray-700 bg-gray-950 py-1 shadow-xl"
                       >
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setSelectedNote(followUp);
-                            setOpenMenuId(null);
-                          }}
-                          className={menuItemClass}
-                        >
-                          <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                          Notes
-                        </button>
                         <button
                           type="button"
                           role="menuitem"
@@ -497,26 +497,21 @@ function FollowUps({ onDueCountChange }) {
       </div>
 
       {selectedNote && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-xl border border-gray-700 bg-gray-950 shadow-2xl">
-            <div className="flex items-start justify-between gap-3 border-b border-gray-800 px-4 py-3">
-              <div className="min-w-0">
-                <h3 className="truncate text-sm font-semibold text-white">Follow-up Note</h3>
-                <p className="mt-0.5 text-xs text-gray-400">{selectedNote.name}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedNote(null)}
-                className="rounded-lg px-2 py-1 text-xs font-semibold text-gray-400 transition hover:bg-gray-800 hover:text-white"
-                title="Close note"
-                aria-label="Close note"
-              >
-                X
-              </button>
-            </div>
-            <div className="space-y-2 p-4">
-              <p className="text-xs font-medium text-gray-500">{formatDate(selectedNote.followUpDate)}</p>
-              <p className="whitespace-pre-wrap text-sm leading-6 text-gray-200">{selectedNote.note}</p>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-sm rounded-lg border border-gray-800 bg-[#0B1220] p-3 shadow-2xl ring-1 ring-white/5">
+            <button
+              type="button"
+              onClick={() => setSelectedNote(null)}
+              className="absolute right-2.5 top-2.5 inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 transition hover:bg-gray-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-gray-600"
+              title="Close note"
+              aria-label="Close note"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <div className="rounded-md border border-gray-800 bg-gray-900/70 px-3 py-2.5">
+              <p className="max-h-72 overflow-y-auto whitespace-pre-wrap pr-7 text-sm leading-5 text-gray-100">
+                {selectedNote.note}
+              </p>
             </div>
           </div>
         </div>

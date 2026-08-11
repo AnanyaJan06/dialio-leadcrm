@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
+import LeadCallLogsDrawer from './LeadCallLogsDrawer.jsx';
 import { showErrorToast, showSuccessToast } from '../utils/toast.js';
 import { BACKEND_URL } from '../config/api.js';
 
@@ -231,6 +232,7 @@ function CRM() {
   const [followUpDrafts, setFollowUpDrafts] = useState({});
   const [submittingNoteId, setSubmittingNoteId] = useState(null);
   const [submittingFollowUpId, setSubmittingFollowUpId] = useState(null);
+  const [callLogsLeadId, setCallLogsLeadId] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [paginationMeta, setPaginationMeta] = useState({ page: 1, limit: 3, totalCount: 0, totalPages: 1 });
@@ -503,6 +505,11 @@ function CRM() {
     [leads, noteLeadId]
   );
 
+  const selectedCallLogsLead = useMemo(
+    () => leads.find((lead) => lead._id === callLogsLeadId),
+    [callLogsLeadId, leads]
+  );
+
   return (
     <div className="crm-page mx-auto flex h-full max-w-6xl flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -652,6 +659,15 @@ function CRM() {
                           aria-label={followUpLeadId === lead._id ? 'Hide reminder editor' : 'Schedule follow-up'}
                         >
                           <FollowUpIcon />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCallLogsLeadId(lead._id)}
+                          className="inline-flex h-8 items-center justify-center rounded-lg border border-gray-700 bg-gray-900 px-2.5 text-xs font-medium text-gray-300 transition hover:border-gray-600 hover:bg-gray-800 hover:text-white"
+                          title="View call logs"
+                          aria-label={`View call logs for ${lead.name || 'lead'}`}
+                        >
+                          Call Logs
                         </button>
                         {isFollowUpDue && <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">Follow-up due</span>}
                         {isFollowUpSoon && !isFollowUpDue && <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-300">Reminder soon</span>}
@@ -876,6 +892,12 @@ function CRM() {
           </div>
         </div>
       )}
+
+      <LeadCallLogsDrawer
+        lead={selectedCallLogsLead}
+        isOpen={Boolean(selectedCallLogsLead)}
+        onClose={() => setCallLogsLeadId(null)}
+      />
     </div>
   );
 }
