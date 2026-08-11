@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { History } from 'lucide-react';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
 import LeadCallLogsDrawer from './LeadCallLogsDrawer.jsx';
@@ -663,11 +664,11 @@ function CRM() {
                         <button
                           type="button"
                           onClick={() => setCallLogsLeadId(lead._id)}
-                          className="inline-flex h-8 items-center justify-center rounded-lg border border-gray-700 bg-gray-900 px-2.5 text-xs font-medium text-gray-300 transition hover:border-gray-600 hover:bg-gray-800 hover:text-white"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-700 bg-gray-900 text-gray-300 transition hover:border-gray-600 hover:bg-gray-800 hover:text-white"
                           title="View call logs"
                           aria-label={`View call logs for ${lead.name || 'lead'}`}
                         >
-                          Call Logs
+                          <History className="h-4 w-4" aria-hidden="true" />
                         </button>
                         {isFollowUpDue && <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">Follow-up due</span>}
                         {isFollowUpSoon && !isFollowUpDue && <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-300">Reminder soon</span>}
