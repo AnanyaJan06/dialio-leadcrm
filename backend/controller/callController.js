@@ -237,14 +237,14 @@ export const getCallLogs = async (req, res) => {
     const before = parseBeforeDate(req.query.before);
     const phoneNumber = String(req.query.phoneNumber || '').trim();
     const filters = [];
-    const accessQuery = await buildCallAccessQuery(req.user);
 
     if (phoneNumber) {
       filters.push(buildPhoneOrFilter(phoneNumber, ['phoneNumber']));
-    }
-
-    if (Object.keys(accessQuery).length > 0) {
-      filters.push(accessQuery);
+    } else {
+      const accessQuery = await buildCallAccessQuery(req.user);
+      if (Object.keys(accessQuery).length > 0) {
+        filters.push(accessQuery);
+      }
     }
 
     const query = filters.length > 1
