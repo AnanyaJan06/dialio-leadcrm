@@ -241,7 +241,7 @@ function App() {
     if (!token) return;
 
     try {
-      const res = await fetch(`${BACKEND_URL}/api/followups`, {
+      const res = await fetch(`${BACKEND_URL}/api/followups?mineOnly=true`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -645,7 +645,7 @@ function App() {
             />
           )}
           {activeTab === 'followups' && (
-            <FollowUps onDueCountChange={setDueFollowUps} />
+            <FollowUps onDueCountChange={setDueFollowUps} currentUser={currentUser} />
           )}
           {activeTab === 'settings' && <Settings />}
         </div>

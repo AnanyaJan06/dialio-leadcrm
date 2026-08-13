@@ -27,6 +27,9 @@ const isDue = (followUp) => (
 );
 
 const canUsePhone = (phone) => String(phone || '').replace(/\D/g, '').length >= 7;
+const getUserId = (user) => String(user?.id || user?._id || user || '');
+const getFollowUpOwnerId = (followUp) => getUserId(followUp.user);
+const getFollowUpOwnerLabel = (followUp) => followUp.user?.name || followUp.user?.email || 'Unassigned';
 
 const actionIconClass = 'inline-flex h-7 w-7 items-center justify-center rounded-lg border border-gray-600 bg-gray-800 text-gray-300 transition hover:border-gray-500 hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500';
 const menuItemClass = 'flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-200 transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-500';
@@ -83,7 +86,7 @@ function FollowUpsSkeleton() {
   );
 }
 
-function FollowUps({ onDueCountChange }) {
+function FollowUps({ onDueCountChange, currentUser }) {
   const [followUps, setFollowUps] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
@@ -119,9 +122,12 @@ function FollowUps({ onDueCountChange }) {
   }, [fetchFollowUps]);
 
   useEffect(() => {
-    const dueCount = followUps.filter(isDue).length;
+    const currentUserId = getUserId(currentUser);
+    const dueCount = followUps.filter((followUp) => (
+      isDue(followUp) && getFollowUpOwnerId(followUp) === currentUserId
+    )).length;
     onDueCountChange?.(dueCount);
-  }, [followUps, onDueCountChange]);
+  }, [currentUser, followUps, onDueCountChange]);
 
   useEffect(() => {
     if (!openMenuId) return undefined;
@@ -393,6 +399,7 @@ function FollowUps({ onDueCountChange }) {
                         {followUp.name}
                       </p>
                       {followUp.phone && <span className="text-xs font-medium text-gray-400">{followUp.phone}</span>}
+                      {followUp.user && <span className="rounded-full border border-gray-700 px-2 py-0.5 text-[11px] font-medium text-gray-400">{getFollowUpOwnerLabel(followUp)}</span>}
                     </div>
                     <div className="flex shrink-0 gap-1">
                       <button

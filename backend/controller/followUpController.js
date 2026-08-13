@@ -41,16 +41,29 @@ const syncLeadFromFollowUp = async (followUp, req, previousFollowUp = null) => {
   await lead.save();
 };
 
-const backfillLeadFollowUps = async (req) => {
-  const leads = await Lead.find({
-    assignedTo: req.user.id,
+const isAdmin = (req) => req.user?.role === 'admin';
+
+const getFollowUpAccessFilter = (req) => (
+  isAdmin(req) ? { _id: req.params.id } : { _id: req.params.id, user: req.user.id }
+);
+
+const backfillLeadFollowUps = async (req, { mineOnly = true } = {}) => {
+  const leadFilter = {
     followUp: null,
     followUpAt: { $ne: null },
-  });
+  };
+
+  if (mineOnly || !isAdmin(req)) {
+    leadFilter.assignedTo = req.user.id;
+  } else {
+    leadFilter.assignedTo = { $ne: null };
+  }
+
+  const leads = await Lead.find(leadFilter);
 
   await Promise.all(leads.map(async (lead) => {
     const followUp = await FollowUp.create({
-      user: req.user.id,
+      user: lead.assignedTo || req.user.id,
       lead: lead._id,
       source: 'lead',
       name: lead.name,
@@ -96,9 +109,12 @@ export const createFollowUp = async (req, res) => {
 
 export const getFollowUps = async (req, res) => {
   try {
-    await backfillLeadFollowUps(req);
+    const mineOnly = req.query.mineOnly === 'true' || !isAdmin(req);
+    await backfillLeadFollowUps(req, { mineOnly });
 
-    const followUps = await FollowUp.find({ user: req.user.id })
+    const filter = mineOnly ? { user: req.user.id } : {};
+    const followUps = await FollowUp.find(filter)
+      .populate('user', 'name email role')
       .sort({ completed: 1, followUpDate: 1, createdAt: -1 });
 
     res.json(followUps);
@@ -106,13 +122,12 @@ export const getFollowUps = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 export const updateFollowUp = async (req, res) => {
   try {
     const { completed } = req.body;
     const nextCompleted = Boolean(completed);
 
-    const existingFollowUp = await FollowUp.findOne({ _id: req.params.id, user: req.user.id });
+    const existingFollowUp = await FollowUp.findOne(getFollowUpAccessFilter(req));
     if (!existingFollowUp) {
       return res.status(404).json({ message: 'Follow-up not found' });
     }
@@ -136,10 +151,7 @@ export const updateFollowUp = async (req, res) => {
 
 export const deleteFollowUp = async (req, res) => {
   try {
-    const followUp = await FollowUp.findOneAndDelete({
-      _id: req.params.id,
-      user: req.user.id
-    });
+    const followUp = await FollowUp.findOneAndDelete(getFollowUpAccessFilter(req));
 
     if (!followUp) {
       return res.status(404).json({ message: 'Follow-up not found' });
