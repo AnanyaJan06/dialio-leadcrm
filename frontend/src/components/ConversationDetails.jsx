@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Phone } from 'lucide-react';
+import { Phone, Sparkles } from 'lucide-react';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
 import { buildPagedUrl, PAGE_SIZE, parsePagedResponse } from '../utils/pagination.js';
@@ -101,7 +101,7 @@ function ConversationDetailsSkeleton() {
   );
 }
 
-function ConversationDetails({ phoneNumber, onClose }) {
+function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
   const [timeline, setTimeline] = useState([]);
   const [hasMore, setHasMore] = useState(false);
   const [nextBefore, setNextBefore] = useState(null);
@@ -110,6 +110,7 @@ function ConversationDetails({ phoneNumber, onClose }) {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sending, setSending] = useState(false);
+  const [drafting, setDrafting] = useState(false);
   const [notice, setNotice] = useState('');
   const timelineEndRef = useRef(null);
   const scrollRef = useRef(null);
@@ -278,6 +279,40 @@ function ConversationDetails({ phoneNumber, onClose }) {
     }
   };
 
+  const draftAiMessage = async () => {
+    if (!phoneNumber && !leadId) {
+      setNotice('Choose a conversation before drafting.');
+      return;
+    }
+
+    try {
+      setDrafting(true);
+      setNotice('');
+      const res = await fetch(`${BACKEND_URL}/api/messages/ai/draft`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          phoneNumber,
+          leadId: leadId || undefined,
+          instruction: messageBody.trim() || 'follow_up'
+        })
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.message || 'Failed to draft message');
+      if (!data.draft) throw new Error(data.intent === 'opt_out' ? 'Lead may have opted out. Review conversation before messaging.' : 'AI did not return a draft.');
+
+      setMessageBody(data.draft);
+      setNotice(data.reason || 'AI draft ready. Review before sending.');
+    } catch (error) {
+      setNotice(error.message || 'Failed to draft message');
+    } finally {
+      setDrafting(false);
+    }
+  };
   const sendMessage = async (event) => {
     event.preventDefault();
     const trimmedBody = messageBody.trim();
@@ -317,6 +352,7 @@ function ConversationDetails({ phoneNumber, onClose }) {
         body: JSON.stringify({
           to: phoneNumber,
           body: trimmedBody,
+          leadId: leadId || undefined,
           mediaUrls
         })
       });
@@ -519,14 +555,23 @@ function ConversationDetails({ phoneNumber, onClose }) {
                 onChange={(event) => setImageFile(event.target.files?.[0] || null)}
               />
             </label>
-
-            <button
-              type="submit"
-              disabled={sending}
-              className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-60"
-            >
-              {sending ? <InlineLoader label="Sending..." /> : 'Send SMS'}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={draftAiMessage}
+                disabled={drafting || sending || (!phoneNumber && !leadId)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
+              >
+                {drafting ? <InlineLoader label="Drafting..." /> : <><Sparkles className="h-4 w-4" aria-hidden="true" /> AI Draft</>}
+              </button>
+              <button
+                type="submit"
+                disabled={sending}
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-60"
+              >
+                {sending ? <InlineLoader label="Sending..." /> : 'Send SMS'}
+              </button>
+            </div>
           </div>
         </div>
       </form>

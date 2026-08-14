@@ -124,8 +124,10 @@ function App() {
   const [activeTab, setActiveTab] = useState('history');
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState('');
   const [selectedMessageNumber, setSelectedMessageNumber] = useState('');
+  const [selectedMessageLeadId, setSelectedMessageLeadId] = useState('');
   const [selectedTeamUser, setSelectedTeamUser] = useState(null);
   const [conversationNumber, setConversationNumber] = useState('');
+  const [conversationLeadId, setConversationLeadId] = useState('');
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'night');
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [unreadTeamMessages, setUnreadTeamMessages] = useState(0);
@@ -180,8 +182,9 @@ function App() {
 
   useEffect(() => {
     const handleMessageContact = (event) => {
-      const { phoneNumber } = event.detail;
+      const { phoneNumber, leadId } = event.detail;
       setSelectedMessageNumber(phoneNumber);
+      setSelectedMessageLeadId(leadId || '');
       openTab('messages');
     };
 
@@ -360,7 +363,9 @@ function App() {
         body: message.body,
         onClick: () => {
           setSelectedMessageNumber(message.from);
+          setSelectedMessageLeadId(message.lead || '');
           setConversationNumber(message.from);
+          setConversationLeadId(message.lead || '');
           openTab('messages');
         }
       });
@@ -435,8 +440,9 @@ function App() {
 
   useEffect(() => {
     const handleOpenConversation = (event) => {
-      const { phoneNumber } = event.detail;
+      const { phoneNumber, leadId } = event.detail;
       setConversationNumber(phoneNumber);
+      setConversationLeadId(leadId || '');
     };
 
     window.addEventListener('openConversation', handleOpenConversation);
@@ -445,6 +451,7 @@ function App() {
 
   const clearSelectedMessageNumber = useCallback(() => {
     setSelectedMessageNumber('');
+    setSelectedMessageLeadId('');
   }, []);
 
   const openNewCall = () => {
@@ -472,8 +479,10 @@ function App() {
     setToken(null);
     setSelectedPhoneNumber('');
     setSelectedMessageNumber('');
+    setSelectedMessageLeadId('');
     setSelectedTeamUser(null);
     setConversationNumber('');
+    setConversationLeadId('');
     setUnreadMessages(0);
     setUnreadTeamMessages(0);
     setDueFollowUps(0);
@@ -632,6 +641,7 @@ function App() {
           {activeTab === 'messages' && (
             <Messages
               selectedPhoneNumber={selectedMessageNumber}
+              selectedLeadId={selectedMessageLeadId}
               onRecipientUsed={clearSelectedMessageNumber}
               currentUser={currentUser}
             />
@@ -670,7 +680,11 @@ function App() {
         ) : (
           <ConversationDetails
             phoneNumber={conversationNumber}
-            onClose={() => setConversationNumber('')}
+            leadId={conversationLeadId}
+            onClose={() => {
+              setConversationNumber('');
+              setConversationLeadId('');
+            }}
           />
         )}
       </div>

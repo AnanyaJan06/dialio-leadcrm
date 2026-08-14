@@ -1,6 +1,11 @@
 import mongoose from 'mongoose';
 
 const messageLogSchema = new mongoose.Schema({
+  lead: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Lead',
+    index: true
+  },
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'

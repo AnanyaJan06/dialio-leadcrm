@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
 import { buildPagedUrl, PAGE_SIZE, parsePagedResponse } from '../utils/pagination.js';
@@ -12,6 +13,7 @@ const normalizePhone = (phone) => {
 };
 
 const getUserId = (user) => String(user?.id || user?._id || '');
+const getLeadId = (lead) => String((lead && typeof lead === 'object' ? lead._id : lead) || '');
 const getUnreadSmsThreadsKey = (userId) => `unreadSmsThreads:${userId || 'unknown'}`;
 
 const messageStatusStyles = {
@@ -63,16 +65,18 @@ function MessagesSkeleton() {
   );
 }
 
-function Messages({ selectedPhoneNumber = '', onRecipientUsed, currentUser }) {
+function Messages({ selectedPhoneNumber = '', selectedLeadId = '', onRecipientUsed, currentUser }) {
   const [messageThreads, setMessageThreads] = useState([]);
   const [hasMore, setHasMore] = useState(false);
   const [nextBefore, setNextBefore] = useState(null);
   const [recipient, setRecipient] = useState(selectedPhoneNumber);
+  const [leadId, setLeadId] = useState(selectedLeadId);
   const [body, setBody] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sending, setSending] = useState(false);
+  const [drafting, setDrafting] = useState(false);
   const [showCompose, setShowCompose] = useState(Boolean(selectedPhoneNumber));
   const [unreadThreadKeys, setUnreadThreadKeys] = useState([]);
 
@@ -181,11 +185,46 @@ function Messages({ selectedPhoneNumber = '', onRecipientUsed, currentUser }) {
   useEffect(() => {
     if (selectedPhoneNumber) {
       setRecipient(selectedPhoneNumber);
+      setLeadId(selectedLeadId || '');
       setShowCompose(true);
       onRecipientUsed?.();
     }
-  }, [selectedPhoneNumber, onRecipientUsed]);
+  }, [selectedPhoneNumber, selectedLeadId, onRecipientUsed]);
 
+  const draftAiMessage = async () => {
+    const trimmedRecipient = recipient.trim();
+    if (!trimmedRecipient && !leadId) {
+      showErrorToast('Choose a recipient before drafting.');
+      return;
+    }
+
+    try {
+      setDrafting(true);
+      const res = await fetch(`${BACKEND_URL}/api/messages/ai/draft`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          phoneNumber: trimmedRecipient,
+          leadId: leadId || undefined,
+          instruction: body.trim() || 'follow_up'
+        })
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.message || 'Failed to draft message');
+      if (!data.draft) throw new Error(data.intent === 'opt_out' ? 'Lead may have opted out. Review conversation before messaging.' : 'AI did not return a draft.');
+
+      setBody(data.draft);
+      showSuccessToast(data.reason || 'AI draft ready. Review before sending.');
+    } catch (error) {
+      showErrorToast(error.message || 'Failed to draft message');
+    } finally {
+      setDrafting(false);
+    }
+  };
   const sendMessage = async (event) => {
     event.preventDefault();
 
@@ -222,6 +261,7 @@ function Messages({ selectedPhoneNumber = '', onRecipientUsed, currentUser }) {
         body: JSON.stringify({
           to: recipient.trim(),
           body: body.trim(),
+          leadId: leadId || undefined,
           mediaUrls
         })
       });
@@ -268,11 +308,11 @@ function Messages({ selectedPhoneNumber = '', onRecipientUsed, currentUser }) {
       : `To ${allottedNumber}`;
   };
 
-  const openConversation = (phoneNumber) => {
+  const openConversation = (phoneNumber, nextLeadId = '') => {
     const threadKey = normalizePhone(phoneNumber) || phoneNumber;
     writeUnreadThreadKeys(unreadThreadKeys.filter((key) => key !== threadKey));
     window.dispatchEvent(new CustomEvent('openConversation', {
-      detail: { phoneNumber }
+      detail: { phoneNumber, leadId: nextLeadId }
     }));
   };
 
@@ -313,13 +353,23 @@ function Messages({ selectedPhoneNumber = '', onRecipientUsed, currentUser }) {
                 className="h-10 w-full rounded-xl border border-gray-700 bg-gray-800 px-3 text-sm text-white focus:border-[#059669]"
               />
             </div>
-            <button
-              type="submit"
-              disabled={sending}
-              className="self-end rounded-xl bg-[#059669] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#047857] disabled:opacity-60"
-            >
-              {sending ? <InlineLoader label="Sending..." /> : 'Send SMS'}
-            </button>
+            <div className="flex flex-wrap gap-2 self-end">
+              <button
+                type="button"
+                onClick={draftAiMessage}
+                disabled={drafting || sending || (!recipient.trim() && !leadId)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2.5 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
+              >
+                {drafting ? <InlineLoader label="Drafting..." /> : <><Sparkles className="h-4 w-4" aria-hidden="true" /> AI Draft</>}
+              </button>
+              <button
+                type="submit"
+                disabled={sending}
+                className="rounded-xl bg-[#059669] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#047857] disabled:opacity-60"
+              >
+                {sending ? <InlineLoader label="Sending..." /> : 'Send SMS'}
+              </button>
+            </div>
           </div>
 
           <div className="mt-3">
@@ -391,7 +441,7 @@ function Messages({ selectedPhoneNumber = '', onRecipientUsed, currentUser }) {
                 <button
                   key={message._id || message.messageSid}
                   type="button"
-                  onClick={() => openConversation(message.phoneNumber)}
+                  onClick={() => openConversation(message.phoneNumber, getLeadId(message.lead))}
                   className="block w-full px-4 py-3 text-left transition hover:bg-[#1F2533]"
                 >
                   <div className="flex items-start justify-between gap-3">

@@ -420,11 +420,15 @@ function CRM() {
     }));
   };
 
-  const handleMessageLead = (phoneNumber) => {
+  const handleMessageLead = (lead) => {
+    const phoneNumber = lead?.phone;
     if (!canUsePhone(phoneNumber)) return;
 
     window.dispatchEvent(new CustomEvent('messageContact', {
-      detail: { phoneNumber },
+      detail: { phoneNumber, leadId: lead._id },
+    }));
+    window.dispatchEvent(new CustomEvent('openConversation', {
+      detail: { phoneNumber, leadId: lead._id },
     }));
   };
 
@@ -662,7 +666,7 @@ function CRM() {
 
                       <button
                         type="button"
-                        onClick={() => handleMessageLead(lead.phone)}
+                        onClick={() => handleMessageLead(lead)}
                         disabled={!hasUsablePhone}
                         className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 text-xs font-medium text-sky-200 transition hover:border-sky-400 hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
                         title={hasUsablePhone ? `Open SMS for ${lead.phone}` : 'No phone number'}
