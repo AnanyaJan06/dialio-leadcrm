@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
-import { CalendarCheck, LayoutDashboard, MessageSquare, Moon, PhoneCall, Plus, Settings as SettingsIcon, Sun, TableProperties, Users, UsersRound } from 'lucide-react';
+import { CalendarCheck, LayoutDashboard, MessageSquare, Moon, PhoneCall, Plus, Settings as SettingsIcon, Sun, TableProperties, Users, UsersRound, Wrench } from 'lucide-react';
 import { io } from 'socket.io-client';
 import Dialer from './components/Dialer.jsx';
 import CallHistory from './components/CallHistory.jsx';
@@ -10,6 +10,7 @@ import InternalMessages, { InternalMessageDetails } from './components/InternalM
 import AdminDashboard from './components/AdminDashboard.jsx';
 import FollowUps from './components/FollowUps.jsx';
 import CRM from './components/CRM.jsx';
+import Parts from './components/Parts.jsx';
 import AppToaster from './components/ui/AppToaster.jsx';
 import Settings from './pages/Settings.jsx';
 import Login from './pages/Login.jsx';
@@ -109,6 +110,7 @@ function NavIcon({ type }) {
     crm: TableProperties,
     team: UsersRound,
     followups: CalendarCheck,
+    parts: Wrench,
     admin: LayoutDashboard,
     settings: SettingsIcon,
     plus: Plus,
@@ -534,6 +536,7 @@ function App() {
             { id: 'messages', label: 'Messages' },
             { id: 'team', label: 'Team Chat' },
             { id: 'followups', label: 'Follow Ups' },
+            { id: 'parts', label: 'Parts' },
             { id: 'settings', label: 'Settings' },
           ].map((item) => (
             <div
@@ -603,7 +606,7 @@ function App() {
       </div>
 
       {/* Middle Panel */}
-      <div className={`min-h-0 flex-1 border-r border-gray-800 bg-[#161B28] flex flex-col md:w-[390px] md:flex-none xl:w-[410px] ${activeTab === 'crm' ? 'lg:hidden' : ''}`}>
+      <div className={`min-h-0 flex-1 border-r border-gray-800 bg-[#161B28] flex flex-col md:w-[390px] md:flex-none xl:w-[410px] ${activeTab === 'crm' || activeTab === 'parts' ? 'lg:hidden' : ''}`}>
         <div className="h-12 border-b border-gray-800 flex items-center justify-between px-4 bg-[#1C2333] md:h-14 md:px-5">
           <h2 className="text-base font-semibold md:text-lg">
             {activeTab === 'admin' && 'Admin Dashboard'}
@@ -613,6 +616,7 @@ function App() {
             {activeTab === 'crm' && 'CRM'}
             {activeTab === 'team' && 'Team Chat'}
             {activeTab === 'followups' && 'Follow Ups'}
+            {activeTab === 'parts' && 'Parts'}
             {activeTab === 'settings' && 'Settings'}
           </h2>
           <button
@@ -657,6 +661,7 @@ function App() {
           {activeTab === 'followups' && (
             <FollowUps onDueCountChange={setDueFollowUps} currentUser={currentUser} />
           )}
+          {activeTab === 'parts' && <Parts />}
           {activeTab === 'settings' && <Settings />}
         </div>
       </div>
@@ -670,6 +675,10 @@ function App() {
         ) : activeTab === 'crm' ? (
           <div className="h-full overflow-auto p-4 thin-scrollbar">
             <CRM />
+          </div>
+        ) : activeTab === 'parts' ? (
+          <div className="h-full overflow-auto p-4 thin-scrollbar">
+            <Parts />
           </div>
         ) : activeTab === 'team' ? (
           <InternalMessageDetails

@@ -16,6 +16,7 @@ import phoneNumberRoutes from './routes/phoneNumberRoutes.js';
 import internalMessageRoutes from './routes/internalMessageRoutes.js';
 import conversationRoutes from './routes/conversationRoutes.js';
 import leadRoutes from './routes/leadRoutes.js';
+import partRoutes from './routes/partRoutes.js';
 
 dotenv.config();
 
@@ -70,6 +71,7 @@ app.use('/api/phone-numbers', phoneNumberRoutes);
 app.use('/api/internal-messages', internalMessageRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/leads', leadRoutes);
+app.use('/api/parts', partRoutes);
 
 app.get('/', (req, res) => res.send('✅ VoIP Backend is Running'));
 app.get('/api/health', (req, res) => res.json({ status: 'OK' }));
