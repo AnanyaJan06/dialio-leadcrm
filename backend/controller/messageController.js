@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import MessageLog from '../model/MessageLog.js';
 import Lead from '../model/Lead.js';
+import Part from '../model/Part.js';
 import TwilioNumber from '../model/TwilioNumber.js';
 import { buildMessageAccessQuery } from '../utils/messageAccess.js';
 import { buildPaginatedResponse, parseBeforeDate, parseLimit } from '../utils/pagination.js';
@@ -24,6 +25,8 @@ const allowedImageTypes = new Map([
   ['image/webp', 'webp']
 ]);
 const maxImageBytes = 5 * 1024 * 1024;
+
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const getTwilioClient = () => {
   if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
@@ -120,6 +123,74 @@ const formatRecentMessagesForAi = (messages) => messages
     status: message.status || '',
     at: message.createdAt,
   }));
+
+const formatPartForAi = (part) => ({
+  id: String(part._id || ''),
+  make: part.make || '',
+  model: part.model || '',
+  year: part.year || '',
+  partRequested: part.partRequested || '',
+  price: part.price,
+});
+
+const buildRegexFilter = (field, value, exact = false) => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+
+  return {
+    [field]: {
+      $regex: exact ? `^${escapeRegex(trimmed)}$` : escapeRegex(trimmed),
+      $options: 'i',
+    },
+  };
+};
+
+const findAvailablePartsForLead = async (lead) => {
+  const filters = [
+    buildRegexFilter('make', lead?.make),
+    buildRegexFilter('model', lead?.model),
+    buildRegexFilter('year', lead?.year, true),
+    buildRegexFilter('partRequested', lead?.partRequested),
+  ].filter(Boolean);
+
+  if (!filters.length) {
+    return {
+      status: 'not_checked',
+      reason: 'No vehicle or part details were available to search the parts catalog.',
+      matches: [],
+    };
+  }
+
+  const exactMatches = await Part.find({ $and: filters })
+    .sort({ updatedAt: -1 })
+    .limit(5)
+    .lean();
+
+  if (exactMatches.length) {
+    return {
+      status: 'available',
+      reason: 'Matching part record found in the catalog.',
+      matches: exactMatches.map(formatPartForAi),
+    };
+  }
+
+  const partOnlyFilter = buildRegexFilter('partRequested', lead?.partRequested);
+  const fallbackMatches = partOnlyFilter
+    ? await Part.find(partOnlyFilter)
+      .sort({ updatedAt: -1 })
+      .limit(5)
+      .lean()
+    : [];
+
+  return {
+    status: 'not_found',
+    reason: fallbackMatches.length
+      ? 'No exact vehicle match was found, but similar parts exist in the catalog.'
+      : 'No matching part record was found in the catalog.',
+    matches: fallbackMatches.map(formatPartForAi),
+  };
+};
+
 export const uploadMessageImage = async (req, res) => {
   try {
     const contentType = String(req.headers['content-type'] || '').split(';')[0].toLowerCase();
@@ -409,15 +480,23 @@ export const draftLeadMessage = async (req, res) => {
       .limit(12)
       .lean();
 
+    const partAvailability = await findAvailablePartsForLead(lead);
+
     const aiInput = {
       task: 'Draft one SMS reply for a CRM lead. Do not send it.',
       requestedInstruction: String(instruction || 'follow_up').slice(0, 240),
       lead: formatLeadForAi(lead),
       recentMessages: formatRecentMessagesForAi(recentMessages),
+      partAvailability,
       rules: [
         'Return JSON only.',
         'Keep draft under 320 characters unless the user explicitly needs more detail.',
         'Sound natural, helpful, and professional.',
+        'If the latest lead message asks about part availability, answer using partAvailability.',
+        'Only say a part is available when partAvailability.status is available.',
+        'Only mention price when partAvailability.matches includes a price.',
+        'If partAvailability.status is not_found, say you could not find an exact match and ask to confirm details or offer to check sourcing.',
+        'If partAvailability.status is not_checked, ask for the missing make, model, year, or part name.',
         'Do not claim an item is available, priced, shipped, or reserved unless the context says so.',
         'If the lead asked to stop, unsubscribe, or not be contacted, draft must be empty and requiresApproval must be true.',
         'Do not include emojis.',
@@ -443,7 +522,8 @@ export const draftLeadMessage = async (req, res) => {
       draft,
       intent: parsed.intent || 'unknown',
       requiresApproval: true,
-      reason: parsed.reason || 'Review before sending.',
+      reason: parsed.reason || partAvailability.reason || 'Review before sending.',
+      partAvailability,
       model: getOpenAIModel(),
       leadId: linkedLeadId || null,
     });
@@ -500,3 +580,4 @@ export const receiveMessage = async (req, res) => {
     res.status(500).send('Internal Server Error');
   }
 };
+
