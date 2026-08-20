@@ -60,6 +60,17 @@ const getSenderConfig = async (userId) => {
 
 const getPublicBaseUrl = () => (process.env.BASE_URL || '').replace(/\/$/, '');
 
+const toPublicMediaUrl = (url) => {
+  const value = String(url || '').trim();
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+
+  const baseUrl = getPublicBaseUrl();
+  if (!baseUrl) return '';
+
+  return `${baseUrl}${value.startsWith('/') ? value : `/${value}`}`;
+};
+
 const normalizeMediaUrls = (mediaUrls) => {
   if (!Array.isArray(mediaUrls)) return [];
 
@@ -138,8 +149,28 @@ const formatPartForAi = (part) => ({
   partRequested: part.partRequested || '',
   price: part.price,
   availability: part.availability || 'not specified',
+  imageUrl: toPublicMediaUrl(part.imageUrl),
+  imageUrls: Array.isArray(part.imageUrls)
+    ? part.imageUrls.map(toPublicMediaUrl).filter(Boolean).slice(0, 4)
+    : [],
 });
 
+const hasPhotoRequest = (...values) => {
+  const text = values.map((value) => String(value || '')).join(' ').toLowerCase();
+  return /\b(photo|photos|picture|pictures|pic|pics|image|images|img|show me|send.*(it|one|them))\b/.test(text);
+};
+
+const getSuggestedPartMediaUrls = ({ partAvailability, recentMessages, instruction }) => {
+  if (partAvailability.status !== 'available') return [];
+
+  const latestInbound = recentMessages.find((message) => message.direction === 'inbound')?.body || '';
+  if (!hasPhotoRequest(instruction, latestInbound)) return [];
+
+  return partAvailability.matches
+    .flatMap((part) => part.imageUrls?.length ? part.imageUrls : [part.imageUrl])
+    .filter(Boolean)
+    .slice(0, 4);
+};
 const buildRegexFilter = (field, value, exact = false) => {
   const trimmed = String(value || '').trim();
   if (!trimmed) return null;
@@ -500,6 +531,11 @@ export const draftLeadMessage = async (req, res) => {
       .lean();
 
     const partAvailability = await findAvailablePartsForLead(lead);
+    const suggestedMediaUrls = getSuggestedPartMediaUrls({
+      partAvailability,
+      recentMessages,
+      instruction,
+    });
 
     const aiInput = {
       task: 'Draft one SMS reply for a CRM lead. Do not send it.',
@@ -512,7 +548,8 @@ export const draftLeadMessage = async (req, res) => {
         'Keep draft under 320 characters unless the user explicitly needs more detail.',
         'Sound natural, helpful, and professional.',
         'If the latest lead message asks about part availability, answer using partAvailability.',
-        'If the latest lead message asks about part condition, damage, quality, grade, photos, mileage, warranty, or whether it is new or used, do not answer from the catalog; draft: Our representative will contact you soon with the part condition details.',
+        'If suggestedMediaUrls are provided, you may mention that photos are attached, but do not write out image URLs.',
+        'If the latest lead message asks about part condition, damage, quality, grade, mileage, warranty, or whether it is new or used, do not answer from the catalog; draft: Our representative will contact you soon with the part condition details.',
         'Only say a part is available when partAvailability.status is available.',
         'Only mention a price in USD when partAvailability.matches includes a price.',
         'Do not guarantee compatibility unless year, make, model, and the relevant engine size or transmission type are confirmed by the catalog details.',
@@ -530,6 +567,7 @@ export const draftLeadMessage = async (req, res) => {
         requiresApproval: true,
         reason: 'short explanation for the rep',
       },
+      suggestedMediaUrls,
     };
 
     const response = await createTextResponse({
@@ -547,6 +585,7 @@ export const draftLeadMessage = async (req, res) => {
       requiresApproval: true,
       reason: parsed.reason || partAvailability.reason || 'Review before sending.',
       partAvailability,
+      suggestedMediaUrls,
       model: getOpenAIModel(),
       leadId: linkedLeadId || null,
     });
@@ -634,5 +673,4 @@ export const receiveMessage = async (req, res) => {
     res.status(500).send('Internal Server Error');
   }
 };
-
 

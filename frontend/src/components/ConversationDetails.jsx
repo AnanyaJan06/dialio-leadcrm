@@ -107,6 +107,7 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
   const [nextBefore, setNextBefore] = useState(null);
   const [messageBody, setMessageBody] = useState('');
   const [imageFile, setImageFile] = useState(null);
+  const [suggestedMediaUrls, setSuggestedMediaUrls] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sending, setSending] = useState(false);
@@ -306,6 +307,7 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
       if (!data.draft) throw new Error(data.intent === 'opt_out' ? 'Lead may have opted out. Review conversation before messaging.' : 'AI did not return a draft.');
 
       setMessageBody(data.draft);
+      setSuggestedMediaUrls(Array.isArray(data.suggestedMediaUrls) ? data.suggestedMediaUrls : []);
       setNotice(data.reason || 'AI draft ready. Review before sending.');
     } catch (error) {
       setNotice(error.message || 'Failed to draft message');
@@ -316,13 +318,13 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
   const sendMessage = async (event) => {
     event.preventDefault();
     const trimmedBody = messageBody.trim();
-    if (!trimmedBody && !imageFile) return;
+    if (!trimmedBody && !imageFile && suggestedMediaUrls.length === 0) return;
 
     try {
       setSending(true);
       setNotice('');
 
-      let mediaUrls = [];
+      let mediaUrls = [...suggestedMediaUrls];
 
       if (imageFile) {
         const uploadRes = await fetch(`${BACKEND_URL}/api/messages/upload-image`, {
@@ -340,7 +342,7 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
           throw new Error(uploadData.message || 'Failed to upload image');
         }
 
-        mediaUrls = [uploadData.mediaUrl];
+        mediaUrls = [...mediaUrls, uploadData.mediaUrl];
       }
 
       const res = await fetch(`${BACKEND_URL}/api/messages/send`, {
@@ -362,6 +364,7 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
 
       setMessageBody('');
       setImageFile(null);
+      setSuggestedMediaUrls([]);
       if (data.messageLog) {
         const timelineMessage = toTimelineMessage(data.messageLog);
         setTimeline((current) => upsertTimelineItem(current, timelineMessage));
@@ -547,7 +550,7 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <label className="cursor-pointer rounded-lg border border-gray-700 px-3 py-2 text-xs font-medium text-gray-300 transition hover:bg-gray-800 hover:text-white">
-              {imageFile ? imageFile.name : 'Attach image'}
+              {imageFile ? imageFile.name : suggestedMediaUrls.length > 0 ? `${suggestedMediaUrls.length} AI photo(s) attached` : 'Attach image'}
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/gif,image/webp"
@@ -556,6 +559,18 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
               />
             </label>
             <div className="flex flex-wrap items-center gap-2">
+              {(imageFile || suggestedMediaUrls.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImageFile(null);
+                    setSuggestedMediaUrls([]);
+                  }}
+                  className="rounded-xl border border-gray-700 px-3 py-2 text-sm font-semibold text-gray-300 transition hover:bg-gray-800 hover:text-white"
+                >
+                  Remove image
+                </button>
+              )}
               <button
                 type="button"
                 onClick={draftAiMessage}

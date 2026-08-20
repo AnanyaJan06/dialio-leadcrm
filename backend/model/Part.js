@@ -33,6 +33,15 @@ const partSchema = new mongoose.Schema(
       default: 'in stock',
       trim: true,
     },
+    imageUrl: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    imageUrls: {
+      type: [String],
+      default: [],
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

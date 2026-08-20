@@ -73,6 +73,7 @@ function Messages({ selectedPhoneNumber = '', selectedLeadId = '', onRecipientUs
   const [leadId, setLeadId] = useState(selectedLeadId);
   const [body, setBody] = useState('');
   const [imageFile, setImageFile] = useState(null);
+  const [suggestedMediaUrls, setSuggestedMediaUrls] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sending, setSending] = useState(false);
@@ -218,6 +219,7 @@ function Messages({ selectedPhoneNumber = '', selectedLeadId = '', onRecipientUs
       if (!data.draft) throw new Error(data.intent === 'opt_out' ? 'Lead may have opted out. Review conversation before messaging.' : 'AI did not return a draft.');
 
       setBody(data.draft);
+      setSuggestedMediaUrls(Array.isArray(data.suggestedMediaUrls) ? data.suggestedMediaUrls : []);
       showSuccessToast(data.reason || 'AI draft ready. Review before sending.');
     } catch (error) {
       showErrorToast(error.message || 'Failed to draft message');
@@ -228,14 +230,14 @@ function Messages({ selectedPhoneNumber = '', selectedLeadId = '', onRecipientUs
   const sendMessage = async (event) => {
     event.preventDefault();
 
-    if (!recipient.trim() || (!body.trim() && !imageFile)) {
+    if (!recipient.trim() || (!body.trim() && !imageFile && suggestedMediaUrls.length === 0)) {
       showErrorToast('Add a recipient and message or image before sending.');
       return;
     }
 
     try {
       setSending(true);
-      let mediaUrls = [];
+      let mediaUrls = [...suggestedMediaUrls];
 
       if (imageFile) {
         const uploadRes = await fetch(`${BACKEND_URL}/api/messages/upload-image`, {
@@ -249,7 +251,7 @@ function Messages({ selectedPhoneNumber = '', selectedLeadId = '', onRecipientUs
         const uploadData = await uploadRes.json();
 
         if (!uploadRes.ok) throw new Error(uploadData.message || 'Failed to upload image');
-        mediaUrls = [uploadData.mediaUrl];
+        mediaUrls = [...mediaUrls, uploadData.mediaUrl];
       }
 
       const res = await fetch(`${BACKEND_URL}/api/messages/send`, {
@@ -275,7 +277,8 @@ function Messages({ selectedPhoneNumber = '', selectedLeadId = '', onRecipientUs
 
       setBody('');
       setImageFile(null);
-      showSuccessToast(imageFile ? 'Image message queued successfully' : 'Message queued successfully');
+      setSuggestedMediaUrls([]);
+      showSuccessToast((imageFile || suggestedMediaUrls.length > 0) ? 'Image message queued successfully' : 'Message queued successfully');
       if (data.messageLog) {
         setMessageThreads((current) => upsertThread(current, data.messageLog));
       } else {
@@ -390,14 +393,17 @@ function Messages({ selectedPhoneNumber = '', selectedLeadId = '', onRecipientUs
               <div className="min-w-0">
                 <p className="text-xs font-medium text-gray-300">Image</p>
                 <p className="mt-1 truncate text-[11px] text-gray-500">
-                  {imageFile ? imageFile.name : 'Attach JPG, PNG, GIF, or WebP'}
+                  {imageFile ? imageFile.name : suggestedMediaUrls.length > 0 ? `${suggestedMediaUrls.length} AI photo(s) attached` : 'Attach JPG, PNG, GIF, or WebP'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                {imageFile && (
+                {(imageFile || suggestedMediaUrls.length > 0) && (
                   <button
                     type="button"
-                    onClick={() => setImageFile(null)}
+                    onClick={() => {
+                      setImageFile(null);
+                      setSuggestedMediaUrls([]);
+                    }}
                     className="rounded-lg border border-gray-700 px-3 py-2 text-xs font-medium text-gray-300 transition hover:bg-gray-700 hover:text-white"
                   >
                     Remove
