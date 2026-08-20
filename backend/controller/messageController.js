@@ -512,6 +512,7 @@ export const draftLeadMessage = async (req, res) => {
         'Keep draft under 320 characters unless the user explicitly needs more detail.',
         'Sound natural, helpful, and professional.',
         'If the latest lead message asks about part availability, answer using partAvailability.',
+        'If the latest lead message asks about part condition, damage, quality, grade, photos, mileage, warranty, or whether it is new or used, do not answer from the catalog; draft: Our representative will contact you soon with the part condition details.',
         'Only say a part is available when partAvailability.status is available.',
         'Only mention a price in USD when partAvailability.matches includes a price.',
         'Do not guarantee compatibility unless year, make, model, and the relevant engine size or transmission type are confirmed by the catalog details.',
@@ -633,4 +634,5 @@ export const receiveMessage = async (req, res) => {
     res.status(500).send('Internal Server Error');
   }
 };
+
 
