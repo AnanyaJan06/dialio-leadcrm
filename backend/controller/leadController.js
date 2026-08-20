@@ -2,6 +2,9 @@ import Lead from '../model/Lead.js';
 import FollowUp from '../model/FollowUp.js';
 import User from '../model/User.js';
 import LeadAssignmentState from '../model/LeadAssignmentState.js';
+import Part from '../model/Part.js';
+import MessageLog from '../model/MessageLog.js';
+import { getAssignedNumberForUser, getTwilioClient } from '../utils/twilioNumbers.js';
 
 const LEAD_DISPOSITIONS = [
   'Quoted',
@@ -73,6 +76,62 @@ const populateLead = (id) => Lead.findById(id)
 const getFollowUpOwner = (lead, req) => lead.assignedTo || req.user?.id || null;
 
 const getFollowUpNote = (lead, fallbackNote = '') => fallbackNote || `Follow up with ${lead.name}`;
+
+const formatUsd = (value) => new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+}).format(value);
+
+const findInStockPartForLead = async (lead) => {
+  const fields = ['make', 'model', 'year', 'partRequested'];
+  const filters = fields
+    .filter((field) => String(lead[field] || '').trim())
+    .map((field) => ({
+      [field]: { $regex: `^${escapeRegex(String(lead[field]).trim())}$`, $options: 'i' },
+    }));
+
+  if (filters.length < fields.length) return null;
+
+  return Part.findOne({
+    $and: [...filters, { availability: 'in stock' }],
+  }).sort({ updatedAt: -1 });
+};
+
+const sendNewLeadPartFollowUp = async (lead) => {
+  const part = await findInStockPartForLead(lead);
+  if (!part) return { sent: false, reason: 'No matching in-stock part was found.' };
+
+  const sender = await getAssignedNumberForUser(lead.assignedTo);
+  if (!sender) return { sent: false, reason: 'No SMS sender number is configured.' };
+
+  const vehicle = [lead.year, lead.make, lead.model].filter(Boolean).join(' ');
+  const partName = part.partRequested || lead.partRequested || 'part';
+  const body = [
+    `Hi ${lead.name}, following up on the ${[vehicle, partName].filter(Boolean).join(' ')} we quoted.`,
+    `We found a matching ${partName} available for ${formatUsd(part.price)}.`,
+    'Would you like to move forward or have any questions?',
+  ].join(' ');
+
+  const twilioMessage = await getTwilioClient().messages.create({
+    from: sender,
+    to: lead.phone,
+    body,
+  });
+
+  await MessageLog.create({
+    lead: lead._id,
+    user: lead.assignedTo || undefined,
+    phoneNumber: lead.phone,
+    from: sender,
+    to: lead.phone,
+    body,
+    direction: 'outbound',
+    status: twilioMessage.status,
+    messageSid: twilioMessage.sid,
+  });
+
+  return { sent: true, part: part.partRequested, price: part.price };
+};
 
 export const createLead = async (req, res) => {
   try {
@@ -155,7 +214,15 @@ export const createLead = async (req, res) => {
 
     emitLeadAssigned(req, populatedLead);
 
-    res.status(201).json({ message: 'Lead created', lead: populatedLead });
+    let automaticSms = { sent: false, reason: 'Automatic SMS was not attempted.' };
+    try {
+      automaticSms = await sendNewLeadPartFollowUp(lead);
+    } catch (smsError) {
+      console.error('New Lead Automatic SMS Error:', smsError);
+      automaticSms = { sent: false, reason: smsError.message || 'Automatic SMS could not be sent.' };
+    }
+
+    res.status(201).json({ message: 'Lead created', lead: populatedLead, automaticSms });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

@@ -25,6 +25,11 @@ const allowedImageTypes = new Map([
   ['image/webp', 'webp']
 ]);
 const maxImageBytes = 5 * 1024 * 1024;
+const unknownNumberGreeting = 'Hello! How can I help you find the right parts for your vehicle today?';
+
+const AUTO_PARTS_ASSISTANT_INSTRUCTIONS = `You are the official customer support assistant for an auto-parts business. You help sales representatives draft concise, professional SMS replies; you never send messages yourself.
+
+Always use the supplied catalog lookup as the source of truth for engines, transmissions, and auto accessories. Before suggesting a match, confirm the vehicle's year, make, model, and relevant engine size or transmission type. Never guarantee compatibility unless the catalog record confirms the exact specifications. Report prices only in USD from the catalog. Confirm availability only for a catalog item explicitly marked "in stock". If no exact item is listed, ask for the year, make, model, and VIN if available, and say that a representative will check full inventory and follow up.`;
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -126,11 +131,13 @@ const formatRecentMessagesForAi = (messages) => messages
 
 const formatPartForAi = (part) => ({
   id: String(part._id || ''),
+  title: `${part.year || ''} ${part.make || ''} ${part.model || ''} ${part.partRequested || ''}`.trim(),
   make: part.make || '',
   model: part.model || '',
   year: part.year || '',
   partRequested: part.partRequested || '',
   price: part.price,
+  availability: part.availability || 'not specified',
 });
 
 const buildRegexFilter = (field, value, exact = false) => {
@@ -166,10 +173,22 @@ const findAvailablePartsForLead = async (lead) => {
     .limit(5)
     .lean();
 
-  if (exactMatches.length) {
+  const inStockMatches = exactMatches.filter(
+    (part) => String(part.availability || '').trim().toLowerCase() === 'in stock'
+  );
+
+  if (inStockMatches.length) {
     return {
       status: 'available',
-      reason: 'Matching part record found in the catalog.',
+      reason: 'Matching in-stock part record found in the catalog.',
+      matches: inStockMatches.map(formatPartForAi),
+    };
+  }
+
+  if (exactMatches.length) {
+    return {
+      status: 'out_of_stock',
+      reason: 'Matching part records were found, but none are marked in stock.',
       matches: exactMatches.map(formatPartForAi),
     };
   }
@@ -494,9 +513,12 @@ export const draftLeadMessage = async (req, res) => {
         'Sound natural, helpful, and professional.',
         'If the latest lead message asks about part availability, answer using partAvailability.',
         'Only say a part is available when partAvailability.status is available.',
-        'Only mention price when partAvailability.matches includes a price.',
+        'Only mention a price in USD when partAvailability.matches includes a price.',
+        'Do not guarantee compatibility unless year, make, model, and the relevant engine size or transmission type are confirmed by the catalog details.',
+        'If those specifications are missing, ask for them before presenting a part as a match.',
+        'If partAvailability.status is out_of_stock, do not confirm availability; offer to check full inventory.',
         'If partAvailability.status is not_found, say you could not find an exact match and ask to confirm details or offer to check sourcing.',
-        'If partAvailability.status is not_checked, ask for the missing make, model, year, or part name.',
+        'If partAvailability.status is not_checked, ask for the missing make, model, year, part name, and VIN if available.',
         'Do not claim an item is available, priced, shipped, or reserved unless the context says so.',
         'If the lead asked to stop, unsubscribe, or not be contacted, draft must be empty and requiresApproval must be true.',
         'Do not include emojis.',
@@ -510,7 +532,7 @@ export const draftLeadMessage = async (req, res) => {
     };
 
     const response = await createTextResponse({
-      instructions: 'You are an assistant for a CRM that helps sales reps draft SMS messages to auto-parts leads. You never send messages. You write concise drafts that a human must approve.',
+      instructions: AUTO_PARTS_ASSISTANT_INSTRUCTIONS,
       input: JSON.stringify(aiInput),
     });
 
@@ -570,6 +592,37 @@ export const receiveMessage = async (req, res) => {
         assignedTo: assignedUserIds,
         createdAt: messageLog.createdAt
       });
+    }
+
+    if (!linkedLeadId) {
+      const greetingAlreadySent = await MessageLog.exists({
+        phoneNumber: from,
+        direction: 'outbound',
+        body: unknownNumberGreeting,
+      });
+
+      if (!greetingAlreadySent) {
+        try {
+          const twilioMessage = await getTwilioClient().messages.create({
+            from: to,
+            to: from,
+            body: unknownNumberGreeting,
+          });
+
+          await MessageLog.create({
+            user: assignedUserIds[0] || undefined,
+            phoneNumber: from,
+            from: to,
+            to: from,
+            body: unknownNumberGreeting,
+            direction: 'outbound',
+            status: twilioMessage.status,
+            messageSid: twilioMessage.sid,
+          });
+        } catch (smsError) {
+          console.error('Unknown Number Greeting SMS Error:', smsError);
+        }
+      }
     }
 
     const twiml = new twilio.twiml.MessagingResponse();

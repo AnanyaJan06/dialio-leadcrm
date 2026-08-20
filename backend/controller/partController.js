@@ -4,8 +4,9 @@ const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$
 
 export const createPart = async (req, res) => {
   try {
-    const { make, model, year, partRequested, price } = req.body;
+    const { make, model, year, partRequested, price, availability } = req.body;
     const numericPrice = Number(price);
+    const normalizedAvailability = String(availability || 'in stock').trim().toLowerCase();
 
     if (!make?.trim() || !model?.trim() || !year?.trim() || !partRequested?.trim()) {
       return res.status(400).json({ message: 'Make, model, year, and part requested are required' });
@@ -15,12 +16,17 @@ export const createPart = async (req, res) => {
       return res.status(400).json({ message: 'A valid price is required' });
     }
 
+    if (!['in stock', 'out of stock'].includes(normalizedAvailability)) {
+      return res.status(400).json({ message: 'Availability must be in stock or out of stock' });
+    }
+
     const part = await Part.create({
       make: make.trim(),
       model: model.trim(),
       year: year.trim(),
       partRequested: partRequested.trim(),
       price: numericPrice,
+      availability: normalizedAvailability,
       createdBy: req.user?.id || null,
     });
 

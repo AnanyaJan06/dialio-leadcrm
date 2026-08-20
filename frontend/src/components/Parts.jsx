@@ -11,6 +11,7 @@ const emptyForm = {
   year: '',
   partRequested: '',
   price: '',
+  availability: 'in stock',
 };
 
 const formatPrice = (value) => {
@@ -115,7 +116,7 @@ function Parts() {
           'Content-Type': 'application/json',
           ...authHeaders,
         },
-        body: JSON.stringify({ make, model, year, partRequested, price }),
+        body: JSON.stringify({ make, model, year, partRequested, price, availability: form.availability }),
       });
       const data = await res.json().catch(() => ({}));
 
@@ -232,6 +233,15 @@ function Parts() {
               className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm text-white sm:col-span-2"
               required
             />
+            <select
+              name="availability"
+              value={form.availability}
+              onChange={handleChange}
+              className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm text-white sm:col-span-2"
+            >
+              <option value="in stock">In stock</option>
+              <option value="out of stock">Out of stock</option>
+            </select>
             <button
               type="submit"
               disabled={saving}
@@ -268,6 +278,7 @@ function Parts() {
                   {[part.year, part.make, part.model].filter(Boolean).join(' ')}
                 </p>
                 <p className="mt-0.5 text-xs font-medium text-emerald-300">{formatPrice(part.price)}</p>
+                <p className="mt-0.5 text-xs text-gray-400">{part.availability || 'Availability not specified'}</p>
               </div>
               <button
                 type="button"

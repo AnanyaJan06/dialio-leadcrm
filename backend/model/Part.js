@@ -27,6 +27,12 @@ const partSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    availability: {
+      type: String,
+      enum: ['in stock', 'out of stock'],
+      default: 'in stock',
+      trim: true,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
