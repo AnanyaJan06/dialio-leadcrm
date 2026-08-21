@@ -4,13 +4,8 @@ import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
 import { buildPagedUrl, PAGE_SIZE, parsePagedResponse } from '../utils/pagination.js';
 import { showCopiedNumberToast, showErrorToast } from '../utils/toast.js';
-
+import { formatPhoneNumber, normalizePhone, toStandardE164 } from '../utils/phone.js';
 import { BACKEND_URL } from '../config/api.js';
-
-const normalizePhone = (phone) => {
-  const digits = String(phone || '').replace(/\D/g, '');
-  return digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
-};
 
 const messageStatusStyles = {
   delivered: 'text-emerald-300',
@@ -58,44 +53,44 @@ function ConversationDetailsSkeleton() {
   return (
     <AppSkeletonTheme>
       <div role="status" aria-label="Loading conversation">
-      <div className="mb-5 flex justify-center">
-        <Skeleton width={96} height={24} borderRadius={999} />
-      </div>
+        <div className="mb-5 flex justify-center">
+          <Skeleton width={96} height={24} borderRadius={999} />
+        </div>
 
-      <div className="space-y-3">
-        <div className="flex justify-start">
-          <div className="w-[68%] rounded-2xl bg-[#1C2333] px-4 py-3 shadow-lg">
-            <Skeleton width={118} height={16} />
-            <Skeleton width="72%" height={12} className="mt-2 block" />
-            <div className="mt-3 flex items-center justify-between gap-4">
-              <Skeleton width={72} height={12} />
-              <Skeleton width={48} height={12} />
+        <div className="space-y-3">
+          <div className="flex justify-start">
+            <div className="w-[68%] rounded-2xl bg-[#1C2333] px-4 py-3 shadow-lg">
+              <Skeleton width={118} height={16} />
+              <Skeleton width="72%" height={12} className="mt-2 block" />
+              <div className="mt-3 flex items-center justify-between gap-4">
+                <Skeleton width={72} height={12} />
+                <Skeleton width={48} height={12} />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <div className="w-[74%] rounded-2xl bg-[#1E293B] px-4 py-3 shadow-lg">
+              <Skeleton width="88%" height={14} />
+              <Skeleton width="64%" height={14} className="mt-2 block" />
+              <div className="mt-3 flex items-center justify-between gap-4">
+                <Skeleton width={48} height={12} />
+                <Skeleton width={52} height={12} />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-start">
+            <div className="w-[62%] rounded-2xl bg-[#1C2333] px-4 py-3 shadow-lg">
+              <Skeleton width={104} height={16} />
+              <Skeleton width="58%" height={12} className="mt-2 block" />
+              <div className="mt-3 flex items-center justify-between gap-4">
+                <Skeleton width={64} height={12} />
+                <Skeleton width={44} height={12} />
+              </div>
             </div>
           </div>
         </div>
-
-        <div className="flex justify-end">
-          <div className="w-[74%] rounded-2xl bg-[#1E293B] px-4 py-3 shadow-lg">
-            <Skeleton width="88%" height={14} />
-            <Skeleton width="64%" height={14} className="mt-2 block" />
-            <div className="mt-3 flex items-center justify-between gap-4">
-              <Skeleton width={48} height={12} />
-              <Skeleton width={52} height={12} />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-start">
-          <div className="w-[62%] rounded-2xl bg-[#1C2333] px-4 py-3 shadow-lg">
-            <Skeleton width={104} height={16} />
-            <Skeleton width="58%" height={12} className="mt-2 block" />
-            <div className="mt-3 flex items-center justify-between gap-4">
-              <Skeleton width={64} height={12} />
-              <Skeleton width={44} height={12} />
-            </div>
-          </div>
-        </div>
-      </div>
       </div>
     </AppSkeletonTheme>
   );
@@ -232,17 +227,19 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
   const getAllottedNumberLabel = (item) => {
     if (item.type === 'call') {
       if (!item.localNumber) return '';
+      const formattedLocal = formatPhoneNumber(item.localNumber);
       return item.direction === 'outbound'
-        ? `From ${item.localNumber}`
-        : `To ${item.localNumber}`;
+        ? `From ${formattedLocal}`
+        : `To ${formattedLocal}`;
     }
 
     const allottedNumber = item.direction === 'outbound' ? item.from : item.to;
     if (!allottedNumber) return '';
 
+    const formattedAllotted = formatPhoneNumber(allottedNumber);
     return item.direction === 'outbound'
-      ? `From ${allottedNumber}`
-      : `To ${allottedNumber}`;
+      ? `From ${formattedAllotted}`
+      : `To ${formattedAllotted}`;
   };
 
   const groupedTimeline = useMemo(() => timeline.reduce((groups, item) => {
@@ -270,7 +267,7 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
     try {
       await navigator.clipboard.writeText(phoneNumber);
       showCopiedNumberToast({
-        phoneNumber,
+        phoneNumber: formatPhoneNumber(phoneNumber),
         onPaste: () => window.dispatchEvent(new CustomEvent('pasteNumberOnDialer', {
           detail: { phoneNumber }
         }))
@@ -315,6 +312,7 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
       setDrafting(false);
     }
   };
+
   const sendMessage = async (event) => {
     event.preventDefault();
     const trimmedBody = messageBody.trim();
@@ -402,7 +400,7 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
               className="truncate text-left text-xl font-semibold text-white hover:text-emerald-300"
               title="Copy number"
             >
-              {phoneNumber}
+              {formatPhoneNumber(phoneNumber)}
             </button>
             <p className="mt-1 text-xs text-gray-400">
               {timeline.length} loaded interaction{timeline.length === 1 ? '' : 's'}

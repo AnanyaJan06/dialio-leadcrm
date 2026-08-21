@@ -4,6 +4,7 @@ import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
 import LeadCallLogsDrawer from './LeadCallLogsDrawer.jsx';
 import { showErrorToast, showSuccessToast } from '../utils/toast.js';
+import { formatPhoneNumber } from '../utils/phone.js';
 import { BACKEND_URL } from '../config/api.js';
 
 const LEAD_DISPOSITIONS = [
@@ -608,7 +609,7 @@ function CRM() {
                         <div className="grid gap-x-12 gap-y-1.5 text-gray-300 md:grid-cols-[minmax(150px,1fr)_minmax(240px,1.4fr)_minmax(90px,0.7fr)]">
                         <p className="min-w-0">
                           <span className="text-gray-500">Phone:</span>{' '}
-                          <span className="font-medium text-gray-200">{lead.phone || '-'}</span>
+                          <span className="font-medium text-gray-200">{formatPhoneNumber(lead.phone) || '-'}</span>
                         </p>
                         <p className="min-w-0">
                           <span className="text-gray-500">Email:</span>{' '}

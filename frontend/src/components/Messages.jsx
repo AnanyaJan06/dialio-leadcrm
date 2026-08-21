@@ -4,13 +4,9 @@ import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
 import { buildPagedUrl, PAGE_SIZE, parsePagedResponse } from '../utils/pagination.js';
 import { showErrorToast, showSuccessToast } from '../utils/toast.js';
+import { formatPhoneNumber, normalizePhone, toStandardE164 } from '../utils/phone.js';
 
 import { BACKEND_URL } from '../config/api.js';
-
-const normalizePhone = (phone) => {
-  const digits = String(phone || '').replace(/\D/g, '');
-  return digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
-};
 
 const getUserId = (user) => String(user?.id || user?._id || '');
 const getLeadId = (lead) => String((lead && typeof lead === 'object' ? lead._id : lead) || '');
@@ -306,9 +302,10 @@ function Messages({ selectedPhoneNumber = '', selectedLeadId = '', onRecipientUs
     const allottedNumber = message.direction === 'outbound' ? message.from : message.to;
     if (!allottedNumber) return '';
 
+    const formatted = formatPhoneNumber(allottedNumber);
     return message.direction === 'outbound'
-      ? `From ${allottedNumber}`
-      : `To ${allottedNumber}`;
+      ? `From ${formatted}`
+      : `To ${formatted}`;
   };
 
   const openConversation = (phoneNumber, nextLeadId = '') => {
@@ -459,8 +456,13 @@ function Messages({ selectedPhoneNumber = '', selectedLeadId = '', onRecipientUs
                         <span className={`truncate text-sm font-semibold ${
                           isUnread ? 'text-white' : 'text-gray-200'
                         }`}>
-                          {message.phoneNumber}
+                          {message.leadName || formatPhoneNumber(message.phoneNumber)}
                         </span>
+                        {message.leadName && (
+                          <span className="truncate text-xs text-gray-400">
+                            {formatPhoneNumber(message.phoneNumber)}
+                          </span>
+                        )}
                       </div>
 
                       <p className={`mt-1 line-clamp-1 text-xs ${

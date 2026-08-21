@@ -5,6 +5,7 @@ import LeadAssignmentState from '../model/LeadAssignmentState.js';
 import Part from '../model/Part.js';
 import MessageLog from '../model/MessageLog.js';
 import { getAssignedNumberForUser, getTwilioClient } from '../utils/twilioNumbers.js';
+import { toStandardE164, buildPhonePatterns } from '../utils/phoneMatch.js';
 
 const LEAD_DISPOSITIONS = [
   'Quoted',
@@ -175,10 +176,12 @@ export const createLead = async (req, res) => {
       initialNotes.push(formatNoteEntry(req, followUpParts.join(' - ')));
     }
 
+    const normalizedPhone = toStandardE164(phone);
+
     const lead = await Lead.create({
       name: name?.trim(),
       email: email?.trim(),
-      phone: phone?.trim(),
+      phone: normalizedPhone,
       zip: zip?.trim() || '',
       partRequested: partRequested?.trim() || '',
       make: make?.trim() || '',
@@ -250,9 +253,11 @@ export const getLeads = async (req, res) => {
       const term = String(search).trim();
       if (term) {
         const regex = { $regex: escapeRegex(term), $options: 'i' };
+        const phonePatterns = buildPhonePatterns(term);
         filter.$or = [
           { name: regex },
           { email: regex },
+          { phone: { $in: phonePatterns } },
           { phone: regex },
           { partRequested: regex },
           { make: regex },

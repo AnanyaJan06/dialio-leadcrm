@@ -22,16 +22,13 @@ import {
   showSuccessToast,
   showTeamMessageToast
 } from './utils/toast.js';
+import { normalizePhone, formatPhoneNumber } from './utils/phone.js';
 import './App.css';
 import { BACKEND_URL } from './config/api.js';
 
 const getUserId = (user) => String(user?.id || user?._id || '');
 const getUnreadMessagesKey = (userId) => `unreadMessages:${userId}`;
 const getUnreadSmsThreadsKey = (userId) => `unreadSmsThreads:${userId}`;
-const normalizePhone = (phone) => {
-  const digits = String(phone || '').replace(/\D/g, '');
-  return digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
-};
 
 const readJsonResponse = async (res) => {
   const text = await res.text();
@@ -361,7 +358,7 @@ function App() {
       }
 
       showIncomingSmsToast({
-        from: message.from,
+        from: formatPhoneNumber(message.from) || message.from,
         body: message.body,
         onClick: () => {
           setSelectedMessageNumber(message.from);

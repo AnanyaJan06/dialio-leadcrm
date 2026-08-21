@@ -9,7 +9,7 @@ import Part from '../model/Part.js';
 import TwilioNumber from '../model/TwilioNumber.js';
 import { buildMessageAccessQuery } from '../utils/messageAccess.js';
 import { buildPaginatedResponse, parseBeforeDate, parseLimit } from '../utils/pagination.js';
-import { buildPhoneOrFilter } from '../utils/phoneMatch.js';
+import { buildPhoneOrFilter, buildPhonePatterns, toStandardE164 } from '../utils/phoneMatch.js';
 import { getAssignedNumberForUser } from '../utils/twilioNumbers.js';
 import { createTextResponse, getOpenAIModel } from '../services/openaiService.js';
 import '../model/User.js';
@@ -79,6 +79,7 @@ const normalizeMediaUrls = (mediaUrls) => {
     .filter(Boolean)
     .slice(0, 10);
 };
+
 const resolveLeadForMessage = async ({ leadId, phoneNumber }) => {
   if (mongoose.isValidObjectId(leadId)) {
     const lead = await Lead.findById(leadId).select('_id');
@@ -171,6 +172,7 @@ const getSuggestedPartMediaUrls = ({ partAvailability, recentMessages, instructi
     .filter(Boolean)
     .slice(0, 4);
 };
+
 const buildRegexFilter = (field, value, exact = false) => {
   const trimmed = String(value || '').trim();
   if (!trimmed) return null;
@@ -281,11 +283,11 @@ export const uploadMessageImage = async (req, res) => {
 export const sendMessage = async (req, res) => {
   try {
     const { to, body, leadId } = req.body;
-    const trimmedTo = String(to || '').trim();
+    const normalizedTo = toStandardE164(to);
     const trimmedBody = String(body || '').trim();
     const mediaUrls = normalizeMediaUrls(req.body.mediaUrls);
 
-    if (!trimmedTo || trimmedTo.replace(/\D/g, '').length < 7) {
+    if (!normalizedTo || normalizedTo.replace(/\D/g, '').length < 7) {
       return res.status(400).json({ message: 'A valid recipient phone number is required' });
     }
 
@@ -300,11 +302,11 @@ export const sendMessage = async (req, res) => {
     const client = getTwilioClient();
     const senderConfig = await getSenderConfig(req.user.id);
     const baseUrl = getPublicBaseUrl();
-    const linkedLeadId = await resolveLeadForMessage({ leadId, phoneNumber: trimmedTo });
+    const linkedLeadId = await resolveLeadForMessage({ leadId, phoneNumber: normalizedTo });
 
     const twilioMessage = await client.messages.create({
       ...senderConfig,
-      to: trimmedTo,
+      to: normalizedTo,
       ...(trimmedBody ? { body: trimmedBody } : {}),
       ...(mediaUrls.length > 0 ? { mediaUrl: mediaUrls } : {}),
       ...(baseUrl ? { statusCallback: `${baseUrl}/api/messages/status` } : {})
@@ -314,9 +316,9 @@ export const sendMessage = async (req, res) => {
     const messageLog = await MessageLog.create({
       ...(linkedLeadId ? { lead: linkedLeadId } : {}),
       user: req.user.id,
-      phoneNumber: trimmedTo,
+      phoneNumber: normalizedTo,
       from: sender,
-      to: trimmedTo,
+      to: normalizedTo,
       body: trimmedBody,
       mediaUrls,
       direction: 'outbound',
@@ -445,8 +447,8 @@ export const getMessageThreads = async (req, res) => {
           threadPhone: {
             $cond: [
               { $eq: ['$direction', 'outbound'] },
-              '$to',
-              '$from'
+              { $ifNull: ['$to', '$phoneNumber'] },
+              { $ifNull: ['$from', '$phoneNumber'] }
             ]
           }
         }
@@ -466,16 +468,79 @@ export const getMessageThreads = async (req, res) => {
       pipeline.push({ $match: { latestCreatedAt: { $lt: before } } });
     }
 
-    pipeline.push({ $limit: limit + 1 });
+    pipeline.push({ $limit: (limit * 2) + 1 });
 
     const groupedThreads = await MessageLog.aggregate(pipeline);
+
+    // Merge any duplicate thread variants in JS using toStandardE164
+    const threadMap = new Map();
+    for (const thread of groupedThreads) {
+      const canonicalPhone = toStandardE164(thread._id);
+      const existing = threadMap.get(canonicalPhone);
+      if (!existing || new Date(thread.latestCreatedAt) > new Date(existing.latestCreatedAt)) {
+        threadMap.set(canonicalPhone, {
+          ...thread,
+          canonicalPhone
+        });
+      }
+    }
+
+    const mergedThreads = Array.from(threadMap.values())
+      .sort((a, b) => new Date(b.latestCreatedAt) - new Date(a.latestCreatedAt))
+      .slice(0, limit + 1);
+
+    // Populate user if present in latestMessage
+    const userIds = mergedThreads
+      .map((t) => t.latestMessage?.user)
+      .filter((id) => mongoose.isValidObjectId(id));
+    const users = userIds.length > 0
+      ? await mongoose.model('User').find({ _id: { $in: userIds } }).select('name email role').lean()
+      : [];
+    const userMap = new Map(users.map((u) => [String(u._id), u]));
+
+    // Batch resolve leads for all thread phones
+    const threadPhones = mergedThreads.map((t) => t.canonicalPhone).filter(Boolean);
+    const directLeadIds = mergedThreads
+      .map((t) => t.latestMessage?.lead)
+      .filter((id) => mongoose.isValidObjectId(id));
+    const allPhonePatterns = threadPhones.flatMap((p) => buildPhonePatterns(p));
+
+    const leads = await Lead.find({
+      $or: [
+        ...(directLeadIds.length > 0 ? [{ _id: { $in: directLeadIds } }] : []),
+        ...(allPhonePatterns.length > 0 ? [{ phone: { $in: allPhonePatterns } }] : [])
+      ]
+    }).select('_id name email phone disposition').lean();
+
+    const leadById = new Map(leads.map((l) => [String(l._id), l]));
+    const leadByPhone = new Map();
+    for (const lead of leads) {
+      for (const pattern of buildPhonePatterns(lead.phone)) {
+        leadByPhone.set(pattern, lead);
+      }
+    }
+
     const page = buildPaginatedResponse(
-      groupedThreads.map((thread) => {
-        const message = formatMessage(thread.latestMessage);
+      mergedThreads.map((thread) => {
+        const rawMessage = thread.latestMessage;
+        const user = rawMessage?.user ? userMap.get(String(rawMessage.user)) : null;
+        const formattedMsg = {
+          ...rawMessage,
+          userName: user?.name || ''
+        };
+
+        const resolvedLead = (rawMessage?.lead && leadById.get(String(rawMessage.lead)))
+          || leadByPhone.get(thread.canonicalPhone)
+          || null;
+
         return {
-          ...message,
-          phoneNumber: thread._id,
-          threadKey: thread._id
+          ...formattedMsg,
+          phoneNumber: thread.canonicalPhone,
+          threadKey: thread.canonicalPhone,
+          lead: resolvedLead ? resolvedLead._id : rawMessage?.lead,
+          leadName: resolvedLead?.name || '',
+          leadEmail: resolvedLead?.email || '',
+          leadDisposition: resolvedLead?.disposition || ''
         };
       }),
       limit,
@@ -489,11 +554,10 @@ export const getMessageThreads = async (req, res) => {
   }
 };
 
-
 export const draftLeadMessage = async (req, res) => {
   try {
     const { leadId, phoneNumber, instruction } = req.body;
-    const trimmedPhoneNumber = String(phoneNumber || '').trim();
+    const trimmedPhoneNumber = toStandardE164(phoneNumber);
     const linkedLeadId = await resolveLeadForMessage({ leadId, phoneNumber: trimmedPhoneNumber });
 
     if (!linkedLeadId && !trimmedPhoneNumber) {
@@ -594,16 +658,21 @@ export const draftLeadMessage = async (req, res) => {
     res.status(500).json({ message: error.message || 'Failed to draft message' });
   }
 };
+
 export const receiveMessage = async (req, res) => {
   try {
-    const from = req.body.From || 'Unknown';
-    const to = req.body.To || process.env.TWILIO_PHONE_NUMBER || 'Unknown';
+    const rawFrom = req.body.From || 'Unknown';
+    const from = toStandardE164(rawFrom);
+    const rawTo = req.body.To || process.env.TWILIO_PHONE_NUMBER || 'Unknown';
+    const to = toStandardE164(rawTo);
     const body = req.body.Body || '';
     const messageSid = req.body.MessageSid || req.body.SmsSid || '';
     const mediaCount = Number(req.body.NumMedia) || 0;
     const mediaUrls = Array.from({ length: mediaCount }, (_, index) => req.body[`MediaUrl${index}`])
       .filter(Boolean);
-    const assignedNumber = await TwilioNumber.findOne({ phoneNumber: to });
+    const assignedNumber = await TwilioNumber.findOne({
+      $or: [{ phoneNumber: to }, { phoneNumber: rawTo }]
+    });
     const assignedUserIds = (assignedNumber?.assignedUsers || []).map((userId) => String(userId));
     const linkedLeadId = await resolveLeadForMessage({ phoneNumber: from });
 
@@ -673,4 +742,3 @@ export const receiveMessage = async (req, res) => {
     res.status(500).send('Internal Server Error');
   }
 };
-
