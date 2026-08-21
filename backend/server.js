@@ -3,6 +3,7 @@ import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Server } from 'socket.io';
+import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import connectDB from './config/db.js';
@@ -77,12 +78,26 @@ app.get('/', (req, res) => res.send('✅ VoIP Backend is Running'));
 app.get('/api/health', (req, res) => res.json({ status: 'OK' }));
 
 // Socket Connection
+io.use((socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token;
+    if (!token) return next(new Error('Authentication required'));
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    socket.data.userId = String(decoded.id);
+    next();
+  } catch {
+    next(new Error('Authentication required'));
+  }
+});
+
 io.on('connection', (socket) => {
   console.log('⚡ User connected:', socket.id);
 
-  socket.on('join-user-room', ({ userId }) => {
-    if (!userId) return;
-    socket.join(String(userId));
+  socket.join(socket.data.userId);
+
+  socket.on('join-user-room', () => {
+    socket.join(socket.data.userId);
   });
 
   socket.on('disconnect', () => {

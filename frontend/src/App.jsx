@@ -329,7 +329,8 @@ function App() {
     const unreadRefreshTimer = window.setTimeout(refreshUnreadTeamMessages, 0);
 
     const socket = io(BACKEND_URL, {
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
+      auth: { token }
     });
 
     const currentUserId = getUserId(currentUserRef.current);
@@ -389,6 +390,10 @@ function App() {
     });
 
     socket.on('message-status-updated', () => {
+      window.dispatchEvent(new Event('refreshMessages'));
+    });
+
+    socket.on('ai-message-sent', () => {
       window.dispatchEvent(new Event('refreshMessages'));
     });
 
