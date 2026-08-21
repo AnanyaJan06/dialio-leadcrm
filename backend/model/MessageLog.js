@@ -35,6 +35,11 @@ const messageLogSchema = new mongoose.Schema({
     enum: ['outbound', 'inbound'],
     required: true
   },
+  senderType: {
+    type: String,
+    enum: ['human', 'ai', 'system'],
+    default: 'human'
+  },
   status: {
     type: String,
     default: 'queued'
