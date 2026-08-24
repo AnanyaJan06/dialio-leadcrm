@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarCheck, History, MessageSquare, PencilLine, Phone } from 'lucide-react';
+import { CalendarCheck, History, MessageSquare, PencilLine, Phone, Sparkles } from 'lucide-react';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
 import LeadCallLogsDrawer from './LeadCallLogsDrawer.jsx';
@@ -166,9 +166,38 @@ function CRM() {
   const [currentPage, setCurrentPage] = useState(1);
   const [paginationMeta, setPaginationMeta] = useState({ page: 1, limit: 3, totalCount: 0, totalPages: 1 });
 
+  const [updatingAiStatus, setUpdatingAiStatus] = useState(false);
+
   const authHeaders = useMemo(() => ({
     Authorization: `Bearer ${localStorage.getItem('token')}`,
   }), []);
+
+  const toggleMyAiReply = async () => {
+    try {
+      setUpdatingAiStatus(true);
+      const nextStatus = !(currentUser?.isAiAutoReplyActive !== false);
+      const res = await fetch(`${BACKEND_URL}/api/auth/me/ai-reply-status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        body: JSON.stringify({ active: nextStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to update AI auto-reply status');
+
+      setCurrentUser((current) => ({
+        ...current,
+        isAiAutoReplyActive: data.user?.isAiAutoReplyActive,
+      }));
+      showSuccessToast(data.message || `AI Auto-Reply ${nextStatus ? 'ON' : 'OFF'}`);
+    } catch (error) {
+      showErrorToast(error.message || 'Failed to update AI auto-reply status');
+    } finally {
+      setUpdatingAiStatus(false);
+    }
+  };
 
   const fetchLeads = useCallback(async (filtersToApply = appliedFilters, pageToUse = currentPage) => {
     try {
@@ -450,13 +479,29 @@ function CRM() {
           <h2 className="text-lg font-semibold text-white">CRM Leads</h2>
           <p className="text-sm text-gray-400">Review leads, assign follow-ups, and keep notes in one place.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowCreateForm((current) => !current)}
-          className="inline-flex items-center justify-center rounded-xl bg-[#059669] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#047857]"
-        >
-          {showCreateForm ? 'Close Form' : 'Create Lead'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleMyAiReply}
+            disabled={updatingAiStatus}
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-xs font-semibold transition ${
+              currentUser?.isAiAutoReplyActive !== false
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                : 'border-gray-700 bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+            } disabled:opacity-60`}
+            title={currentUser?.isAiAutoReplyActive !== false ? 'Click to turn AI Agent replies OFF' : 'Click to turn AI Agent replies ON'}
+          >
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            <span>AI Auto-Reply: {currentUser?.isAiAutoReplyActive !== false ? 'ON' : 'OFF'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowCreateForm((current) => !current)}
+            className="inline-flex items-center justify-center rounded-xl bg-[#059669] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#047857]"
+          >
+            {showCreateForm ? 'Close Form' : 'Create Lead'}
+          </button>
+        </div>
       </div>
 
       {showCreateForm && (

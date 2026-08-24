@@ -339,6 +339,32 @@ function AdminDashboard({ showStats = true, showCreateUser = true, showUsers = t
     }
   };
 
+  const toggleAiReplyStatus = async (userId, currentValue) => {
+    try {
+      setNotice({ text: '', type: '' });
+
+      const res = await fetch(`${BACKEND_URL}/api/auth/users/${userId}/ai-reply-status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders
+        },
+        body: JSON.stringify({ active: !currentValue })
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.message || 'Failed to update AI reply status');
+
+      setNotice({
+        text: `AI Auto-reply ${data.user?.isAiAutoReplyActive ? 'enabled' : 'disabled'} for ${data.user?.name || 'user'}.`,
+        type: 'success'
+      });
+      fetchDashboardData();
+    } catch (err) {
+      setNotice({ text: err.message, type: 'error' });
+    }
+  };
+
   const setDefaultNumber = async (numberId, userId) => {
     try {
       setSettingDefaultNumber(numberId);
@@ -677,19 +703,33 @@ function AdminDashboard({ showStats = true, showCreateUser = true, showUsers = t
                         <p className="mt-1 text-xs text-gray-500">No numbers assigned</p>
                       )}
                     </div>
-                    <div className="flex shrink-0 flex-col items-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleLeadAssignmentStatus(userId, user.isLeadAssignmentActive !== false)}
-                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
-                          user.isLeadAssignmentActive !== false
-                            ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                            : 'border border-gray-700 bg-gray-800 text-gray-300'
-                        }`}
-                      >
-                        {user.isLeadAssignmentActive !== false ? 'Assignment on' : 'Assignment off'}
-                      </button>
-                      <span className="rounded-full border border-gray-700 px-2.5 py-1 text-[11px] font-semibold capitalize text-gray-300">
+                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleAiReplyStatus(userId, user.isAiAutoReplyActive !== false)}
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+                            user.isAiAutoReplyActive !== false
+                              ? 'border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20'
+                              : 'border border-gray-700 bg-gray-800 text-gray-400 hover:bg-gray-700'
+                          }`}
+                          title="Toggle automatic AI replies for this user's assigned leads"
+                        >
+                          {user.isAiAutoReplyActive !== false ? 'AI Agent on' : 'AI Agent off'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleLeadAssignmentStatus(userId, user.isLeadAssignmentActive !== false)}
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+                            user.isLeadAssignmentActive !== false
+                              ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                              : 'border border-gray-700 bg-gray-800 text-gray-300'
+                          }`}
+                        >
+                          {user.isLeadAssignmentActive !== false ? 'Assignment on' : 'Assignment off'}
+                        </button>
+                      </div>
+                      <span className="rounded-full border border-gray-700 px-2.5 py-0.5 text-[11px] font-semibold capitalize text-gray-300">
                         {user.role}
                       </span>
                     </div>

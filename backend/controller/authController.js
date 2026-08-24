@@ -50,7 +50,9 @@ export const register = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        assignedPhoneNumber: user.assignedPhoneNumber || ''
+        assignedPhoneNumber: user.assignedPhoneNumber || '',
+        isLeadAssignmentActive: user.isLeadAssignmentActive !== false,
+        isAiAutoReplyActive: user.isAiAutoReplyActive !== false
       }
     });
   } catch (error) {
@@ -87,7 +89,9 @@ export const login = async (req, res) => {
         name: user.name, 
         email: user.email, 
         role: user.role,
-        assignedPhoneNumber: user.assignedPhoneNumber || ''
+        assignedPhoneNumber: user.assignedPhoneNumber || '',
+        isLeadAssignmentActive: user.isLeadAssignmentActive !== false,
+        isAiAutoReplyActive: user.isAiAutoReplyActive !== false
       } 
     });
   } catch (error) {
@@ -156,6 +160,63 @@ export const updateLeadAssignmentStatus = async (req, res) => {
         email: user.email,
         role: user.role,
         isLeadAssignmentActive: user.isLeadAssignmentActive,
+        isAiAutoReplyActive: user.isAiAutoReplyActive !== false,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const updateMyAiReplyStatus = async (req, res) => {
+  try {
+    const { active } = req.body;
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.isAiAutoReplyActive = Boolean(active);
+    await user.save();
+
+    res.json({
+      message: `Automatic AI replies ${user.isAiAutoReplyActive ? 'turned ON' : 'turned OFF'}`,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isLeadAssignmentActive: user.isLeadAssignmentActive !== false,
+        isAiAutoReplyActive: user.isAiAutoReplyActive,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const updateUserAiReplyStatus = async (req, res) => {
+  try {
+    const { active } = req.body;
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.isAiAutoReplyActive = Boolean(active);
+    await user.save();
+
+    res.json({
+      message: `Automatic AI replies ${user.isAiAutoReplyActive ? 'turned ON' : 'turned OFF'} for ${user.name}`,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isLeadAssignmentActive: user.isLeadAssignmentActive !== false,
+        isAiAutoReplyActive: user.isAiAutoReplyActive,
       },
     });
   } catch (error) {

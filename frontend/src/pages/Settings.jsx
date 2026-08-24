@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 import { AppSkeletonTheme, Skeleton } from '../components/ui/AppSkeleton.jsx';
 import InlineLoader from '../components/ui/InlineLoader.jsx';
 import { confirmAction } from '../utils/confirmDialog.js';
@@ -45,6 +46,7 @@ function Settings() {
   const [loading, setLoading] = useState(true);
   const [savingDefault, setSavingDefault] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [savingAiStatus, setSavingAiStatus] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -128,6 +130,33 @@ function Settings() {
       showErrorToast(error.message || 'Failed to update default number');
     } finally {
       setSavingDefault(false);
+    }
+  };
+
+  const handleToggleAiReply = async () => {
+    const nextStatus = !(user?.isAiAutoReplyActive !== false);
+    try {
+      setSavingAiStatus(true);
+      const res = await fetch(`${BACKEND_URL}/api/auth/me/ai-reply-status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ active: nextStatus })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to update AI auto-reply status');
+
+      setUser((current) => ({
+        ...current,
+        isAiAutoReplyActive: data.user?.isAiAutoReplyActive
+      }));
+      showSuccessToast(data.message || `AI Auto-Reply ${nextStatus ? 'ON' : 'OFF'}`);
+    } catch (error) {
+      showErrorToast(error.message || 'Failed to update AI auto-reply status');
+    } finally {
+      setSavingAiStatus(false);
     }
   };
 
@@ -227,6 +256,61 @@ function Settings() {
             ) : (
               <p className="text-sm font-medium text-white">No numbers allotted</p>
             )}
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-4 rounded-2xl border border-gray-700 bg-gray-900 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-emerald-400" />
+              <h3 className="text-base font-semibold text-white">AI Agent Auto-Reply</h3>
+            </div>
+            <p className="mt-1 text-xs text-gray-400">
+              When enabled, the AI agent automatically replies to incoming SMS from your assigned leads when you are away or offline.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleToggleAiReply}
+            disabled={savingAiStatus}
+            aria-label="Toggle AI Agent Auto-Reply"
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-60 ${
+              user?.isAiAutoReplyActive !== false ? 'bg-[#059669]' : 'bg-gray-700'
+            }`}
+            role="switch"
+            aria-checked={user?.isAiAutoReplyActive !== false}
+            title={user?.isAiAutoReplyActive !== false ? 'Turn AI Auto-Reply OFF' : 'Turn AI Auto-Reply ON'}
+          >
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                user?.isAiAutoReplyActive !== false ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between border-t border-gray-800 pt-3">
+          <span className="text-xs text-gray-400">AI Status for your leads:</span>
+          <div className="flex items-center gap-2">
+            {savingAiStatus && <InlineLoader label="Saving..." size="xs" />}
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                user?.isAiAutoReplyActive !== false
+                  ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                  : 'border border-gray-700 bg-gray-800 text-gray-400'
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  user?.isAiAutoReplyActive !== false ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'
+                }`}
+              />
+              {user?.isAiAutoReplyActive !== false ? 'AI Agent ON' : 'AI Agent OFF'}
+            </span>
           </div>
         </div>
       </div>

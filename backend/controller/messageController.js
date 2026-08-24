@@ -12,7 +12,7 @@ import { buildPaginatedResponse, parseBeforeDate, parseLimit } from '../utils/pa
 import { buildPhoneOrFilter, buildPhonePatterns, toStandardE164 } from '../utils/phoneMatch.js';
 import { getAssignedNumberForUser } from '../utils/twilioNumbers.js';
 import { createTextResponse, getOpenAIModel } from '../services/openaiService.js';
-import '../model/User.js';
+import User from '../model/User.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -318,7 +318,12 @@ const sendOfflineAgentAiReply = async ({ io, lead, from, to, inboundMessage }) =
     || !String(inboundMessage.body || '').trim()
     || inboundMessage.mediaUrls?.length
     || optOutPattern.test(inboundMessage.body || '')) return;
-  if (await isUserOnline(io, lead.assignedTo)) return;
+
+  const assignedUserId = lead.assignedTo?._id || lead.assignedTo;
+  const assignedUser = await User.findById(assignedUserId).select('isAiAutoReplyActive');
+  if (!assignedUser || assignedUser.isAiAutoReplyActive === false) return;
+
+  if (await isUserOnline(io, assignedUserId)) return;
 
   const cooldownSince = new Date(Date.now() - autoReplyCooldownMs);
   const recentAutoReply = await MessageLog.exists({
@@ -337,7 +342,7 @@ const sendOfflineAgentAiReply = async ({ io, lead, from, to, inboundMessage }) =
   if (!aiReply.draft || !aiReply.safeToAutoSend || aiReply.intent === 'opt_out') return;
 
   // The agent may have opened the CRM while OpenAI was preparing the response.
-  if (await isUserOnline(io, lead.assignedTo)) return;
+  if (await isUserOnline(io, assignedUserId)) return;
 
   const twilioMessage = await getTwilioClient().messages.create({
     from: to,
@@ -348,7 +353,7 @@ const sendOfflineAgentAiReply = async ({ io, lead, from, to, inboundMessage }) =
 
   const replyLog = await MessageLog.create({
     lead: lead._id,
-    user: lead.assignedTo,
+    user: assignedUserId,
     phoneNumber: from,
     from: to,
     to: from,
@@ -360,7 +365,7 @@ const sendOfflineAgentAiReply = async ({ io, lead, from, to, inboundMessage }) =
     messageSid: twilioMessage.sid,
   });
 
-  io?.to(String(lead.assignedTo)).emit('ai-message-sent', {
+  io?.to(String(assignedUserId)).emit('ai-message-sent', {
     lead: String(lead._id),
     message: replyLog,
     reason: aiReply.reason,
