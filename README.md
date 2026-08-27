@@ -16,11 +16,12 @@ When an inbound SMS belongs to a lead and that lead's assigned agent has no acti
 
 ### AI Conversation Flow & Knowledge
 
-The AI assistant generates brief, concise, and customer-focused SMS replies answering key customer questions:
-- **Price**: Quotes accurate USD pricing directly from the live parts catalog.
-- **Warranty**: Confirms tested OEM replacement warranty coverage (typically 30-90 days).
-- **Mileage**: Confirms verified low mileage on tested engines, transmissions, and mechanical parts.
+The AI assistant generates brief, concise, and customer-focused SMS replies answering key customer questions, recognizing shorthand, slash commands, and common typos:
+- **Price**: Quotes accurate USD pricing directly from the live parts catalog. Handles shorthand and commands (`price?`, `price please`, `/price`, `cost?`, `how much?`, `prce`).
+- **Warranty**: Confirms tested OEM replacement warranty coverage (typically 30-90 days). Handles typos and commands (`warranty?`, `warrany?`, `waranty?`, `warranty please`, `/warranty`, `guarantee`).
+- **Mileage**: Confirms verified low mileage on tested engines, transmissions, and mechanical parts. Handles shorthand and typos (`mileage?`, `mileage`, `milage?`, `miles?`, `/mileage`, `how many miles?`).
 - **Shipping**: Informs customers that standard shipping takes approximately **7-14 days** (7-14 business days) with tracking provided.
+- **Combined Inquiries**: Seamlessly handles multi-topic questions in one unified message (e.g. `price and warranty?`, `price, warranty, mileage`).
 
 ### Environment Configuration
 
