@@ -36,23 +36,29 @@ import { BACKEND_URL } from '../config/api.js';
 const MAX_PHOTOS = 4;
 
 const emptyForm = {
+  externalId: '',
+  title: '',
+  part: '',
   make: '',
   model: '',
   year: '',
-  partRequested: '',
+  trim: '',
   price: '',
+  currency: 'USD',
   availability: 'in stock',
+  condition: '',
+  productType: '',
   imageUrl: '',
   imageUrls: [],
 };
 
-const formatPrice = (value) => {
+const formatPrice = (value, currency = 'USD') => {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return '$0.00';
 
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD',
+    currency,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount);
@@ -244,12 +250,18 @@ function Parts() {
         const query = searchTerm.trim().toLowerCase();
         if (query) {
           const matchesSearch = [
+            part.externalId,
+            part.title,
+            part.part,
             part.make,
             part.model,
             part.year,
-            part.partRequested,
+            part.trim,
             part.price,
+            part.currency,
             part.availability,
+            part.condition,
+            part.productType,
           ].some((val) => String(val || '').toLowerCase().includes(query));
 
           if (!matchesSearch) return false;
@@ -310,12 +322,18 @@ function Parts() {
       : (part.imageUrl ? [part.imageUrl] : []);
 
     setForm({
+      externalId: part.externalId || '',
+      title: part.title || '',
+      part: part.part || '',
       make: part.make || '',
       model: part.model || '',
       year: part.year || '',
-      partRequested: part.partRequested || '',
+      trim: part.trim || '',
       price: part.price ?? '',
+      currency: part.currency || 'USD',
       availability: part.availability || 'in stock',
+      condition: part.condition || '',
+      productType: part.productType || '',
       imageUrl: existingImages[0] || '',
       imageUrls: existingImages,
     });
@@ -483,14 +501,20 @@ function Parts() {
   const handleFormSubmit = async (event) => {
     event.preventDefault();
 
+    const externalId = form.externalId.trim();
+    const title = form.title.trim();
+    const partName = form.part.trim();
     const make = form.make.trim();
     const model = form.model.trim();
     const year = form.year.trim();
-    const partRequested = form.partRequested.trim();
+    const trim = form.trim.trim();
     const price = Number(form.price);
+    const currency = (form.currency || 'USD').trim().toUpperCase();
+    const condition = form.condition.trim();
+    const productType = form.productType.trim();
 
-    if (!make || !model || !year || !partRequested) {
-      showErrorToast('Make, model, year, and part requested are required');
+    if (!make || !model || !year || !partName) {
+      showErrorToast('Make, model, year, and part are required');
       return;
     }
 
@@ -517,12 +541,18 @@ function Parts() {
           ...authHeaders,
         },
         body: JSON.stringify({
+          externalId,
+          title,
+          part: partName,
           make,
           model,
           year,
-          partRequested,
+          trim,
           price,
+          currency,
           availability: form.availability,
+          condition,
+          productType,
           imageUrl: finalPrimary,
           imageUrls: finalImages,
         }),
@@ -543,7 +573,7 @@ function Parts() {
   };
 
   const handleDelete = async (part) => {
-    const partSummary = `${part.year || ''} ${part.make || ''} ${part.model || ''} - ${part.partRequested || 'Part'}`.trim();
+    const partSummary = `${part.year || ''} ${part.make || ''} ${part.model || ''} ${part.trim || ''} - ${part.part || 'Part'}`.trim();
     const confirmed = await confirmAction({
       title: 'Delete part from stock?',
       text: `Are you sure you want to remove "${partSummary}" from stock?`,
@@ -574,7 +604,7 @@ function Parts() {
   };
 
   const handleCopyPartInfo = (part) => {
-    const text = `${part.year || ''} ${part.make || ''} ${part.model || ''} - ${part.partRequested || ''} | ${formatPrice(part.price)} (${part.availability || 'In Stock'})`.trim();
+    const text = `${part.externalId ? `${part.externalId} | ` : ''}${part.year || ''} ${part.make || ''} ${part.model || ''} ${part.trim || ''} - ${part.part || ''} | ${formatPrice(part.price, part.currency)} (${part.availability || 'In Stock'})`.trim();
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text);
       setCopiedId(part._id);
@@ -617,7 +647,7 @@ function Parts() {
       return;
     }
 
-    const headers = ['Make', 'Model', 'Year', 'Part Description', 'Price (USD)', 'Stock Availability', 'Photos Count', 'Image URLs', 'Date Added'];
+    const headers = ['ID', 'Title', 'Part', 'Year', 'Make', 'Model', 'Trim', 'Price', 'Currency', 'Availability', 'Condition', 'Product Type', 'Photos Count', 'Image URLs', 'Date Added'];
     const rows = filteredAndSortedParts.map((p) => {
       const photos = (p.imageUrls && p.imageUrls.length > 0)
         ? p.imageUrls.join(' | ')
@@ -625,17 +655,24 @@ function Parts() {
       const count = (p.imageUrls && p.imageUrls.length > 0)
         ? p.imageUrls.length
         : (p.imageUrl ? 1 : 0);
+      const escapeCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
       return [
-        `"${(p.make || '').replace(/"/g, '""')}"`,
-        `"${(p.model || '').replace(/"/g, '""')}"`,
-        `"${(p.year || '').replace(/"/g, '""')}"`,
-        `"${(p.partRequested || '').replace(/"/g, '""')}"`,
-        `"${Number(p.price || 0).toFixed(2)}"`,
-        `"${(p.availability || 'in stock').replace(/"/g, '""')}"`,
-        `"${count}"`,
-        `"${photos.replace(/"/g, '""')}"`,
-        `"${p.createdAt ? new Date(p.createdAt).toISOString() : ''}"`,
+        escapeCell(p.externalId),
+        escapeCell(p.title),
+        escapeCell(p.part),
+        escapeCell(p.year),
+        escapeCell(p.make),
+        escapeCell(p.model),
+        escapeCell(p.trim),
+        escapeCell(Number(p.price || 0).toFixed(2)),
+        escapeCell(p.currency || 'USD'),
+        escapeCell(p.availability || 'in stock'),
+        escapeCell(p.condition),
+        escapeCell(p.productType),
+        escapeCell(count),
+        escapeCell(photos),
+        escapeCell(p.createdAt ? new Date(p.createdAt).toISOString() : ''),
       ];
     });
 
@@ -954,7 +991,7 @@ function Parts() {
                           >
                             <img
                               src={primaryImageUrl}
-                              alt={part.partRequested || 'Part'}
+                              alt={part.part || 'Part'}
                               className="h-full w-full object-cover transition duration-200 group-hover/img:scale-110"
                               onError={(e) => {
                                 e.target.style.display = 'none';
@@ -998,15 +1035,14 @@ function Parts() {
                           </div>
                           <div className="min-w-0">
                             <p className="truncate font-semibold text-white group-hover:text-emerald-300 transition-colors">
-                              {part.partRequested || 'Unnamed Part'}
+                              {part.part || 'Unnamed Part'}
                             </p>
-                            <div className="flex items-center gap-2 text-[11px] text-gray-400">
-                              <span>Added {formatDate(part.createdAt) || 'Recently'}</span>
-                              {photosCount > 0 && (
-                                <span className="inline-flex items-center gap-0.5 text-gray-400">
-                                  • 📷 {photosCount} photo{photosCount > 1 ? 's' : ''}
-                                </span>
-                              )}
+                            <div className="flex max-w-xs flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-gray-400">
+                              {part.externalId && <span className="font-mono text-cyan-300">{part.externalId}</span>}
+                              {part.title && <span className="truncate" title={part.title}>{part.title}</span>}
+                              {part.trim && <span>Trim: {part.trim}</span>}
+                              {part.condition && <span>{part.condition}</span>}
+                              {photosCount > 0 && <span>{photosCount} photo{photosCount > 1 ? 's' : ''}</span>}
                             </div>
                           </div>
                         </div>
@@ -1035,7 +1071,7 @@ function Parts() {
                       {/* Price */}
                       <td className="whitespace-nowrap px-3 py-3.5">
                         <span className="font-mono text-sm font-bold text-emerald-400">
-                          {formatPrice(part.price)}
+                          {formatPrice(part.price, part.currency)}
                         </span>
                       </td>
 
@@ -1279,23 +1315,64 @@ function Parts() {
                 />
               </div>
 
-              {/* Part Name / Title */}
+              {/* Sheet Catalog Fields */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-300">
+                    Sheet ID
+                  </label>
+                  <input
+                    name="externalId"
+                    value={form.externalId}
+                    onChange={handleFormChange}
+                    placeholder="e.g. AUTO000001"
+                    className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-300">
+                    Part <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    name="part"
+                    value={form.part}
+                    onChange={handleFormChange}
+                    placeholder="e.g. Engine"
+                    className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-300">
+                    Condition
+                  </label>
+                  <input
+                    name="condition"
+                    value={form.condition}
+                    onChange={handleFormChange}
+                    placeholder="e.g. used"
+                    className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-gray-300">
-                  Part Requested / Title <span className="text-rose-400">*</span>
+                  Title
                 </label>
                 <input
-                  name="partRequested"
-                  value={form.partRequested}
+                  name="title"
+                  value={form.title}
                   onChange={handleFormChange}
-                  placeholder="e.g. Engine Assembly 2.5L, Front Bumper, Transmission"
+                  placeholder="e.g. Engine - 1960 - Saab - 93 (1960 Down) - Direct"
                   className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-4 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
-                  required
                 />
               </div>
 
-              {/* Vehicle Fitment: Make, Model, Year */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {/* Vehicle Fitment: Make, Model, Year, Trim */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-gray-300">
                     Make <span className="text-rose-400">*</span>
@@ -1337,10 +1414,23 @@ function Parts() {
                     required
                   />
                 </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-300">
+                    Trim
+                  </label>
+                  <input
+                    name="trim"
+                    value={form.trim}
+                    onChange={handleFormChange}
+                    placeholder="e.g. 6-226"
+                    className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
+                  />
+                </div>
               </div>
 
               {/* Price & Stock Availability */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-gray-300">
                     Price ($ USD) <span className="text-rose-400">*</span>
@@ -1365,6 +1455,19 @@ function Parts() {
 
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-gray-300">
+                    Currency
+                  </label>
+                  <input
+                    name="currency"
+                    value={form.currency}
+                    onChange={handleFormChange}
+                    placeholder="USD"
+                    className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm font-semibold uppercase text-white placeholder-gray-500 transition focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-300">
                     Stock Availability <span className="text-rose-400">*</span>
                   </label>
                   <select
@@ -1376,6 +1479,19 @@ function Parts() {
                     <option value="in stock">In Stock (Available)</option>
                     <option value="out of stock">Out of Stock</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-300">
+                    Product Type
+                  </label>
+                  <input
+                    name="productType"
+                    value={form.productType}
+                    onChange={handleFormChange}
+                    placeholder="Auto Parts & Accessories"
+                    className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
+                  />
                 </div>
               </div>
 
@@ -1420,15 +1536,15 @@ function Parts() {
             <div className="flex items-center justify-between border-b border-gray-800 bg-[#1C2333]/90 px-5 py-3.5">
               <div>
                 <h4 className="text-sm font-bold text-white">
-                  {[previewPart.year, previewPart.make, previewPart.model, '-', previewPart.partRequested].filter(Boolean).join(' ')}
+                  {[previewPart.year, previewPart.make, previewPart.model, previewPart.trim, '-', previewPart.part].filter(Boolean).join(' ')}
                 </h4>
                 <div className="mt-0.5 flex items-center gap-2 text-xs">
-                  <span className="font-mono font-semibold text-emerald-400">{formatPrice(previewPart.price)}</span>
-                  <span className="text-gray-500">•</span>
+                  <span className="font-mono font-semibold text-emerald-400">{formatPrice(previewPart.price, previewPart.currency)}</span>
+                  <span className="text-gray-500">-</span>
                   <span className={previewPart.availability === 'out of stock' ? 'text-rose-400' : 'text-emerald-300'}>
                     {previewPart.availability === 'out of stock' ? 'Out of Stock' : 'In Stock'}
                   </span>
-                  <span className="text-gray-500">•</span>
+                  <span className="text-gray-500">-</span>
                   <span className="text-gray-400">Photo {activePhotoIndex + 1} of {previewGallery.length}</span>
                 </div>
               </div>
@@ -1445,7 +1561,7 @@ function Parts() {
             <div className="relative flex min-h-[300px] max-h-[58vh] items-center justify-center bg-black/70 p-4">
               <img
                 src={resolveImageUrl(previewGallery[activePhotoIndex])}
-                alt={`${previewPart.partRequested} - Photo ${activePhotoIndex + 1}`}
+                alt={`${previewPart.part || ''} - Photo ${activePhotoIndex + 1}`}
                 className="max-h-[54vh] w-auto max-w-full rounded-xl object-contain shadow-lg"
               />
 

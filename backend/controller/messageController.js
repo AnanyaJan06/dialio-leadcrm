@@ -118,7 +118,7 @@ export const generateDirectAnswer = ({ lead, detectedTopics, partAvailability })
   ) || partAvailability?.matches?.[0];
 
   const hasPrice = inStockMatch && typeof inStockMatch.price === 'number' && inStockMatch.price > 0;
-  const priceValue = hasPrice ? `$${inStockMatch.price}` : null;
+  const priceValue = hasPrice ? (inStockMatch.priceFormatted || `$${inStockMatch.price}`) : null;
 
   const parts = [];
 
@@ -285,21 +285,28 @@ const formatRecentMessagesForAi = (messages) => messages
     at: message.createdAt,
   }));
 
-const formatPartForAi = (part) => ({
-  id: String(part._id || ''),
-  title: `${part.year || ''} ${part.make || ''} ${part.model || ''} ${part.partRequested || ''}`.trim(),
-  make: part.make || '',
-  model: part.model || '',
-  year: part.year || '',
-  partRequested: part.partRequested || '',
-  price: part.price,
-  priceFormatted: typeof part.price === 'number' ? `$${part.price}` : (part.price ? `$${part.price}` : 'Quote required'),
-  availability: part.availability || 'in stock',
-  imageUrl: toPublicMediaUrl(part.imageUrl),
-  imageUrls: Array.isArray(part.imageUrls)
-    ? part.imageUrls.map(toPublicMediaUrl).filter(Boolean).slice(0, 4)
-    : [],
-});
+const formatPartForAi = (part) => {
+  const partName = part.part || '';
+  const currency = part.currency || 'USD';
+
+  return {
+    make: part.make || '',
+    model: part.model || '',
+    year: part.year || '',
+    trim: part.trim || '',
+    part: partName,
+    price: part.price,
+    priceFormatted: typeof part.price === 'number'
+      ? new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(part.price)
+      : (part.price ? `${currency} ${part.price}` : 'Quote required'),
+    availability: part.availability || 'in stock',
+    condition: part.condition || '',
+    imageUrl: toPublicMediaUrl(part.imageUrl),
+    imageUrls: Array.isArray(part.imageUrls)
+      ? part.imageUrls.map(toPublicMediaUrl).filter(Boolean).slice(0, 4)
+      : [],
+  };
+};
 
 const hasPhotoRequest = (...values) => {
   const text = values.map((value) => String(value || '')).join(' ').toLowerCase();
@@ -330,6 +337,12 @@ const buildRegexFilter = (field, value, exact = false) => {
   };
 };
 
+const buildPartNameFilter = (value) => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+
+  return buildRegexFilter('part', trimmed);
+};
 const extractVehicleDetails = (lead, recentMessages = []) => {
   let make = String(lead?.make || '').trim();
   let model = String(lead?.model || '').trim();
@@ -389,7 +402,7 @@ const findAvailablePartsForLead = async (lead, recentMessages = []) => {
     buildRegexFilter('make', details.make),
     buildRegexFilter('model', details.model),
     buildRegexFilter('year', details.year, true),
-    buildRegexFilter('partRequested', details.partRequested),
+    buildPartNameFilter(details.partRequested),
   ].filter(Boolean);
 
   if (!filters.length) {
@@ -406,7 +419,7 @@ const findAvailablePartsForLead = async (lead, recentMessages = []) => {
     .limit(5)
     .lean();
 
-  // 2. If no exact match and partRequested has multiple words (e.g. "Engine 2.4L"), try core part keyword search
+  // 2. If no exact match and the requested part has multiple words, try core part keyword search
   if (!matches.length && details.partRequested && (details.make || details.model || details.year)) {
     const coreWords = details.partRequested.split(/\s+/).filter((w) => w.length > 2);
     for (const word of coreWords) {
@@ -414,7 +427,7 @@ const findAvailablePartsForLead = async (lead, recentMessages = []) => {
         buildRegexFilter('make', details.make),
         buildRegexFilter('model', details.model),
         buildRegexFilter('year', details.year, true),
-        buildRegexFilter('partRequested', word),
+        buildPartNameFilter(word),
       ].filter(Boolean);
 
       if (relaxedFilters.length >= 2) {
@@ -463,7 +476,7 @@ const findAvailablePartsForLead = async (lead, recentMessages = []) => {
     };
   }
 
-  const partOnlyFilter = buildRegexFilter('partRequested', details.partRequested);
+  const partOnlyFilter = buildPartNameFilter(details.partRequested);
   const fallbackMatches = partOnlyFilter
     ? await Part.find(partOnlyFilter)
       .sort({ updatedAt: -1 })
@@ -1163,4 +1176,3 @@ export const receiveMessage = async (req, res) => {
     res.status(500).send('Internal Server Error');
   }
 };
-

@@ -19,6 +19,82 @@ const allowedImageTypes = new Map([
 const maxImageBytes = 10 * 1024 * 1024; // 10MB
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const clean = (value) => String(value ?? '').trim();
+
+const normalizeAvailability = (value) => {
+  const normalized = clean(value || 'in stock').toLowerCase();
+  if (['in stock', 'available', 'yes', 'true', '1'].includes(normalized)) return 'in stock';
+  if (['out of stock', 'unavailable', 'no', 'false', '0'].includes(normalized)) return 'out of stock';
+  return normalized;
+};
+
+const buildPartTitle = ({ part, year, make, model, trim }) => (
+  [part, year, make, model, trim].filter(Boolean).join(' - ')
+);
+
+const normalizePartPayload = (body, userId) => {
+  const partName = clean(body.part);
+  const make = clean(body.make);
+  const model = clean(body.model);
+  const year = clean(body.year);
+  const trim = clean(body.trim);
+  const title = clean(body.title) || buildPartTitle({ part: partName, year, make, model, trim });
+  const price = Number(body.price);
+  const availability = normalizeAvailability(body.availability);
+
+  const images = Array.isArray(body.imageUrls)
+    ? body.imageUrls.map((u) => clean(u)).filter(Boolean).slice(0, 4)
+    : (clean(body.imageUrl) ? [clean(body.imageUrl)] : []);
+
+  return {
+    data: {
+      externalId: clean(body.externalId ?? body.id),
+      title,
+      part: partName,
+      make,
+      model,
+      year,
+      trim,
+      price,
+      currency: clean(body.currency || 'USD').toUpperCase(),
+      availability,
+      condition: clean(body.condition),
+      productType: clean(body.productType ?? body.product_type),
+      imageUrl: images[0] || clean(body.imageUrl),
+      imageUrls: images,
+      createdBy: userId || null,
+    },
+    partName,
+    make,
+    model,
+    year,
+    price,
+    availability,
+  };
+};
+
+const validatePartPayload = ({ partName, make, model, year, price, availability }) => {
+  if (!make || !model || !year || !partName) {
+    return 'Make, model, year, and part are required';
+  }
+
+  if (!Number.isFinite(price) || price < 0) {
+    return 'A valid price is required';
+  }
+
+  if (!['in stock', 'out of stock'].includes(availability)) {
+    return 'Availability must be in stock or out of stock';
+  }
+
+  return null;
+};
+
+const handleDuplicateKey = (error, res) => {
+  if (error?.code === 11000) {
+    return res.status(409).json({ message: 'A part with this sheet id already exists' });
+  }
+  return res.status(500).json({ message: error.message });
+};
 
 export const uploadPartImage = async (req, res) => {
   try {
@@ -57,42 +133,14 @@ export const uploadPartImage = async (req, res) => {
 
 export const createPart = async (req, res) => {
   try {
-    const { make, model, year, partRequested, price, availability, imageUrl, imageUrls } = req.body;
-    const numericPrice = Number(price);
-    const normalizedAvailability = String(availability || 'in stock').trim().toLowerCase();
+    const normalized = normalizePartPayload(req.body, req.user?.id);
+    const validationError = validatePartPayload(normalized);
+    if (validationError) return res.status(400).json({ message: validationError });
 
-    if (!make?.trim() || !model?.trim() || !year?.trim() || !partRequested?.trim()) {
-      return res.status(400).json({ message: 'Make, model, year, and part requested are required' });
-    }
-
-    if (!Number.isFinite(numericPrice) || numericPrice < 0) {
-      return res.status(400).json({ message: 'A valid price is required' });
-    }
-
-    if (!['in stock', 'out of stock'].includes(normalizedAvailability)) {
-      return res.status(400).json({ message: 'Availability must be in stock or out of stock' });
-    }
-
-    const images = Array.isArray(imageUrls)
-      ? imageUrls.map((u) => String(u).trim()).filter(Boolean).slice(0, 4)
-      : (imageUrl?.trim() ? [imageUrl.trim()] : []);
-    const primaryImage = images.length > 0 ? images[0] : (imageUrl?.trim() || '');
-
-    const part = await Part.create({
-      make: make.trim(),
-      model: model.trim(),
-      year: year.trim(),
-      partRequested: partRequested.trim(),
-      price: numericPrice,
-      availability: normalizedAvailability,
-      imageUrl: primaryImage,
-      imageUrls: images,
-      createdBy: req.user?.id || null,
-    });
-
+    const part = await Part.create(normalized.data);
     res.status(201).json({ message: 'Part added', part });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    handleDuplicateKey(error, res);
   }
 };
 
@@ -104,10 +152,15 @@ export const getParts = async (req, res) => {
     if (search?.trim()) {
       const regex = { $regex: escapeRegex(search.trim()), $options: 'i' };
       filter.$or = [
+        { externalId: regex },
+        { title: regex },
+        { part: regex },
         { make: regex },
         { model: regex },
         { year: regex },
-        { partRequested: regex },
+        { trim: regex },
+        { condition: regex },
+        { productType: regex },
       ];
     }
 
@@ -125,40 +178,14 @@ export const getParts = async (req, res) => {
 
 export const updatePart = async (req, res) => {
   try {
-    const { make, model, year, partRequested, price, availability, imageUrl, imageUrls } = req.body;
-    const numericPrice = Number(price);
-    const normalizedAvailability = String(availability || 'in stock').trim().toLowerCase();
+    const normalized = normalizePartPayload(req.body, req.user?.id);
+    const validationError = validatePartPayload(normalized);
+    if (validationError) return res.status(400).json({ message: validationError });
 
-    if (!make?.trim() || !model?.trim() || !year?.trim() || !partRequested?.trim()) {
-      return res.status(400).json({ message: 'Make, model, year, and part requested are required' });
-    }
+    const updateData = { ...normalized.data };
+    delete updateData.createdBy;
 
-    if (!Number.isFinite(numericPrice) || numericPrice < 0) {
-      return res.status(400).json({ message: 'A valid price is required' });
-    }
-
-    if (!['in stock', 'out of stock'].includes(normalizedAvailability)) {
-      return res.status(400).json({ message: 'Availability must be in stock or out of stock' });
-    }
-
-    const images = Array.isArray(imageUrls)
-      ? imageUrls.map((u) => String(u).trim()).filter(Boolean).slice(0, 4)
-      : (imageUrl !== undefined ? (imageUrl?.trim() ? [imageUrl.trim()] : []) : undefined);
-    const primaryImage = images !== undefined
-      ? (images.length > 0 ? images[0] : '')
-      : (imageUrl !== undefined ? imageUrl.trim() : undefined);
-
-    const updateData = {
-      make: make.trim(),
-      model: model.trim(),
-      year: year.trim(),
-      partRequested: partRequested.trim(),
-      price: numericPrice,
-      availability: normalizedAvailability,
-    };
-
-    if (primaryImage !== undefined) updateData.imageUrl = primaryImage;
-    if (images !== undefined) updateData.imageUrls = images;
+    if (!updateData.externalId) delete updateData.externalId;
 
     const part = await Part.findByIdAndUpdate(
       req.params.id,
@@ -172,7 +199,7 @@ export const updatePart = async (req, res) => {
 
     res.json({ message: 'Part updated', part });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    handleDuplicateKey(error, res);
   }
 };
 
@@ -189,4 +216,3 @@ export const deletePart = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
