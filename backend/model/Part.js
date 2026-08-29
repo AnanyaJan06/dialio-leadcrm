@@ -4,7 +4,6 @@ const partSchema = new mongoose.Schema(
   {
     externalId: {
       type: String,
-      sparse: true,
       trim: true,
     },
     title: {

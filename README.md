@@ -22,7 +22,8 @@ The AI assistant generates brief, concise, and customer-focused SMS replies answ
 - **Mileage**: Confirms verified low mileage on tested engines, transmissions, and mechanical parts. Handles shorthand and typos (`mileage?`, `mileage`, `milage?`, `miles?`, `/mileage`, `how many miles?`).
 - **Shipping**: Informs customers that standard shipping takes approximately **7-14 days** (7-14 business days) with tracking provided.
 - **Order Confirmation & Purchase**: When customers confirm or place an order (`i need to confirm the order`, `iam placing the order`, `proceed with their order`, `ready to order`), replies: *"Our representative will contact you soon for confirming the order."* and updates the lead disposition to `Ordered`.
-- **Combined Inquiries**: Seamlessly handles multi-topic questions in one unified message (e.g. `price and warranty?`, `price, warranty, mileage`, `price? i need to confirm the order`).
+- **Photo / Picture Requests**: When customers ask for photos or pictures of the part (`send picture`, `picture of the required part`, `photos please`, `can I see photos`), replies: *"Our representative will send you the picture of the required part when they are online."*
+- **Combined Inquiries**: Seamlessly handles multi-topic questions in one unified message (e.g. `price and warranty?`, `price and send picture`, `price, warranty, mileage`, `price? i need to confirm the order`).
 
 ### Environment Configuration
 
