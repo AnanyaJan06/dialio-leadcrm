@@ -9,6 +9,7 @@ import {
   Copy,
   DollarSign,
   Download,
+  FileSpreadsheet,
   Image as ImageIcon,
   ImagePlus,
   Layers,
@@ -143,6 +144,13 @@ function Parts() {
   const [deletingPartId, setDeletingPartId] = useState('');
   const [copiedId, setCopiedId] = useState('');
 
+  // Google Sheet Sync State
+  const [syncingSheet, setSyncingSheet] = useState(false);
+  const [sheetSyncModalOpen, setSheetSyncModalOpen] = useState(false);
+  const [sheetUrlInput, setSheetUrlInput] = useState('');
+  const [syncConfig, setSyncConfig] = useState({ isConfigured: false, maskedUrl: '' });
+  const [syncStats, setSyncStats] = useState(null);
+
   // Modal State for Add / Edit
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPart, setEditingPart] = useState(null); // null = Add mode, object = Edit mode
@@ -157,9 +165,30 @@ function Parts() {
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [availabilityFilter, setAvailabilityFilter] = useState('all'); // 'all' | 'in stock' | 'out of stock'
   const [makeFilter, setMakeFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
+
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(25);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    limit: 25,
+    totalPages: 1,
+    hasMore: false,
+  });
+
+  // Catalog Summary Metrics
+  const [catalogMetrics, setCatalogMetrics] = useState({
+    totalCount: 0,
+    inStockCount: 0,
+    outOfStockCount: 0,
+    inStockRate: 0,
+    availableMakes: [],
+  });
 
   const fileInputRef = useRef(null);
 
@@ -167,7 +196,38 @@ function Parts() {
     Authorization: `Bearer ${localStorage.getItem('token')}`,
   }), []);
 
-  const fetchParts = useCallback(async ({ silent = false } = {}) => {
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const fetchSyncConfig = useCallback(async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/parts/sync-config`, {
+        headers: authHeaders,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSyncConfig(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch sheet sync config:', err);
+    }
+  }, [authHeaders]);
+
+  const fetchParts = useCallback(async ({
+    silent = false,
+    overridePage,
+    overrideLimit,
+    overrideSearch,
+    overrideAvail,
+    overrideMake,
+    overrideSort,
+  } = {}) => {
     try {
       if (!silent) {
         setLoading(true);
@@ -175,135 +235,150 @@ function Parts() {
         setRefreshing(true);
       }
 
-      const res = await fetch(`${BACKEND_URL}/api/parts`, {
+      const p = overridePage !== undefined ? overridePage : page;
+      const l = overrideLimit !== undefined ? overrideLimit : limit;
+      const s = overrideSearch !== undefined ? overrideSearch : debouncedSearch;
+      const a = overrideAvail !== undefined ? overrideAvail : availabilityFilter;
+      const m = overrideMake !== undefined ? overrideMake : makeFilter;
+      const so = overrideSort !== undefined ? overrideSort : sortBy;
+
+      const params = new URLSearchParams({
+        page: String(p),
+        limit: String(l),
+        availability: a,
+        make: m,
+        sort: so,
+      });
+      if (s) params.set('search', s);
+
+      const res = await fetch(`${BACKEND_URL}/api/parts?${params.toString()}`, {
         headers: authHeaders,
       });
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) throw new Error(data.message || 'Failed to load stock parts');
-      setParts(Array.isArray(data) ? data : []);
+
+      if (Array.isArray(data)) {
+        setParts(data);
+        setPagination({
+          total: data.length,
+          page: 1,
+          limit: data.length,
+          totalPages: 1,
+          hasMore: false,
+        });
+      } else {
+        setParts(Array.isArray(data.parts) ? data.parts : []);
+        if (data.pagination) setPagination(data.pagination);
+        if (data.metrics) setCatalogMetrics(data.metrics);
+      }
     } catch (error) {
       showErrorToast(error.message || 'Failed to load stock parts');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [authHeaders]);
+  }, [authHeaders, page, limit, debouncedSearch, availabilityFilter, makeFilter, sortBy]);
 
   useEffect(() => {
     fetchParts();
   }, [fetchParts]);
 
+  useEffect(() => {
+    fetchSyncConfig();
+  }, [fetchSyncConfig]);
+
+  const handleSyncSheet = async (overrideUrl) => {
+    const urlToUse = overrideUrl !== undefined ? overrideUrl : sheetUrlInput.trim();
+
+    try {
+      setSyncingSheet(true);
+      setSyncStats(null);
+
+      const res = await fetch(`${BACKEND_URL}/api/parts/sync-sheet`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        body: JSON.stringify(urlToUse ? { sheetUrl: urlToUse } : {}),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to sync Google Sheet');
+
+      showSuccessToast(data.message || 'Parts successfully synced from Google Sheet');
+      setSyncStats(data.stats);
+      fetchSyncConfig();
+      fetchParts({ silent: true, overridePage: 1 });
+    } catch (error) {
+      showErrorToast(error.message || 'Failed to sync Google Sheet');
+    } finally {
+      setSyncingSheet(false);
+    }
+  };
+
   // Unique vehicle makes list for filtering
   const availableMakes = useMemo(() => {
+    if (catalogMetrics.availableMakes && catalogMetrics.availableMakes.length > 0) {
+      return catalogMetrics.availableMakes;
+    }
     const set = new Set();
     parts.forEach((p) => {
-      if (p.make && p.make.trim()) {
-        set.add(p.make.trim());
-      }
+      if (p.make && p.make.trim()) set.add(p.make.trim());
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [parts]);
+  }, [catalogMetrics.availableMakes, parts]);
 
-  // Summary Metrics
-  const metrics = useMemo(() => {
-    const totalCount = parts.length;
-    let inStockCount = 0;
-    let outOfStockCount = 0;
-    let inStockValuation = 0;
-    let withPhotoCount = 0;
+  // Page Numbers generator for pagination
+  const pageNumbers = useMemo(() => {
+    const total = pagination.totalPages || 1;
+    const current = pagination.page || 1;
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    if (current <= 4) {
+      return [1, 2, 3, 4, 5, '...', total];
+    }
+    if (current >= total - 3) {
+      return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+    }
+    return [1, '...', current - 1, current, current + 1, '...', total];
+  }, [pagination.page, pagination.totalPages]);
 
-    parts.forEach((p) => {
-      const isAvailable = (p.availability || '').toLowerCase() === 'in stock';
-      if (isAvailable) {
-        inStockCount += 1;
-        const val = Number(p.price);
-        if (Number.isFinite(val) && val > 0) {
-          inStockValuation += val;
-        }
-      } else {
-        outOfStockCount += 1;
-      }
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > pagination.totalPages || newPage === page) return;
+    setPage(newPage);
+  };
 
-      if (p.imageUrl || (p.imageUrls && p.imageUrls.length > 0)) {
-        withPhotoCount += 1;
-      }
-    });
+  const handleLimitChange = (newLimit) => {
+    setLimit(newLimit);
+    setPage(1);
+  };
 
-    const inStockRate = totalCount > 0 ? Math.round((inStockCount / totalCount) * 100) : 0;
+  const handleAvailabilityChange = (newAvail) => {
+    setAvailabilityFilter(newAvail);
+    setPage(1);
+  };
 
-    return {
-      totalCount,
-      inStockCount,
-      outOfStockCount,
-      inStockValuation,
-      inStockRate,
-      withPhotoCount,
-    };
-  }, [parts]);
+  const handleMakeChange = (newMake) => {
+    setMakeFilter(newMake);
+    setPage(1);
+  };
 
-  // Filtered & Sorted Parts
-  const filteredAndSortedParts = useMemo(() => {
-    return parts
-      .filter((part) => {
-        // Search query
-        const query = searchTerm.trim().toLowerCase();
-        if (query) {
-          const matchesSearch = [
-            part.externalId,
-            part.title,
-            part.part,
-            part.make,
-            part.model,
-            part.year,
-            part.trim,
-            part.price,
-            part.currency,
-            part.availability,
-            part.condition,
-            part.productType,
-          ].some((val) => String(val || '').toLowerCase().includes(query));
+  const handleSortChange = (newSort) => {
+    setSortBy(newSort);
+    setPage(1);
+  };
 
-          if (!matchesSearch) return false;
-        }
-
-        // Availability filter
-        if (availabilityFilter !== 'all') {
-          const normAvail = String(part.availability || 'in stock').trim().toLowerCase();
-          if (normAvail !== availabilityFilter) return false;
-        }
-
-        // Make filter
-        if (makeFilter !== 'all') {
-          if (String(part.make || '').trim().toLowerCase() !== makeFilter.toLowerCase()) {
-            return false;
-          }
-        }
-
-        return true;
-      })
-      .sort((a, b) => {
-        if (sortBy === 'newest') {
-          return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
-        }
-        if (sortBy === 'oldest') {
-          return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
-        }
-        if (sortBy === 'price-asc') {
-          return (Number(a.price) || 0) - (Number(b.price) || 0);
-        }
-        if (sortBy === 'price-desc') {
-          return (Number(b.price) || 0) - (Number(a.price) || 0);
-        }
-        if (sortBy === 'year-desc') {
-          return String(b.year || '').localeCompare(String(a.year || ''), undefined, { numeric: true });
-        }
-        if (sortBy === 'make-asc') {
-          return String(a.make || '').localeCompare(String(b.make || ''));
-        }
-        return 0;
-      });
-  }, [parts, searchTerm, availabilityFilter, makeFilter, sortBy]);
+  const handleResetFilters = () => {
+    setSearchTerm('');
+    setDebouncedSearch('');
+    setAvailabilityFilter('all');
+    setMakeFilter('all');
+    setSortBy('newest');
+    setPage(1);
+  };
 
   // Open Modal for Add
   const handleOpenAddModal = () => {
@@ -642,36 +717,31 @@ function Parts() {
 
   // Export to CSV
   const handleExportCSV = () => {
-    if (filteredAndSortedParts.length === 0) {
+    if (parts.length === 0) {
       showErrorToast('No parts to export');
       return;
     }
 
     const headers = ['ID', 'Title', 'Part', 'Year', 'Make', 'Model', 'Trim', 'Price', 'Currency', 'Availability', 'Condition', 'Product Type', 'Photos Count', 'Image URLs', 'Date Added'];
-    const rows = filteredAndSortedParts.map((p) => {
-      const photos = (p.imageUrls && p.imageUrls.length > 0)
-        ? p.imageUrls.join(' | ')
-        : (p.imageUrl || '');
-      const count = (p.imageUrls && p.imageUrls.length > 0)
-        ? p.imageUrls.length
-        : (p.imageUrl ? 1 : 0);
-      const escapeCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const escapeCell = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
 
+    const rows = parts.map((p) => {
+      const images = Array.isArray(p.imageUrls) && p.imageUrls.length > 0 ? p.imageUrls : (p.imageUrl ? [p.imageUrl] : []);
       return [
         escapeCell(p.externalId),
-        escapeCell(p.title),
+        escapeCell(p.title || p.part),
         escapeCell(p.part),
         escapeCell(p.year),
         escapeCell(p.make),
         escapeCell(p.model),
         escapeCell(p.trim),
-        escapeCell(Number(p.price || 0).toFixed(2)),
+        p.price ?? '',
         escapeCell(p.currency || 'USD'),
         escapeCell(p.availability || 'in stock'),
         escapeCell(p.condition),
         escapeCell(p.productType),
-        escapeCell(count),
-        escapeCell(photos),
+        images.length,
+        escapeCell(images.join(' | ')),
         escapeCell(p.createdAt ? new Date(p.createdAt).toISOString() : ''),
       ];
     });
@@ -688,13 +758,6 @@ function Parts() {
   };
 
   const hasActiveFilters = Boolean(searchTerm.trim() || availabilityFilter !== 'all' || makeFilter !== 'all' || sortBy !== 'newest');
-
-  const handleResetFilters = () => {
-    setSearchTerm('');
-    setAvailabilityFilter('all');
-    setMakeFilter('all');
-    setSortBy('newest');
-  };
 
   // Preview part gallery list
   const previewGallery = useMemo(() => {
@@ -745,6 +808,20 @@ function Parts() {
 
           <button
             type="button"
+            onClick={() => setSheetSyncModalOpen(true)}
+            disabled={syncingSheet || loading}
+            title={syncConfig.isConfigured ? 'Sync parts from Google Sheet' : 'Connect Google Sheet'}
+            className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 shadow-sm transition hover:bg-emerald-500/20 hover:text-white disabled:opacity-50"
+          >
+            <FileSpreadsheet className={`h-3.5 w-3.5 ${syncingSheet ? 'animate-pulse text-emerald-400' : 'text-emerald-400'}`} />
+            <span>{syncingSheet ? 'Syncing...' : 'Sync Sheet'}</span>
+            {syncConfig.isConfigured && (
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" title="Google Sheet Connected" />
+            )}
+          </button>
+
+          <button
+            type="button"
             onClick={handleOpenAddModal}
             className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#059669] to-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:from-[#047857] hover:to-emerald-700 sm:text-sm"
           >
@@ -759,14 +836,14 @@ function Parts() {
         {/* Total Stock */}
         <div className="rounded-2xl border border-gray-800 bg-[#11151F] p-3.5 shadow-sm">
           <div className="flex items-center justify-between text-gray-400">
-            <span className="text-xs font-medium uppercase tracking-wider">Total Stock</span>
+            <span className="text-xs font-medium uppercase tracking-wider">Total Catalog</span>
             <div className="rounded-lg bg-gray-800/90 p-1.5 text-gray-300">
               <Tag className="h-3.5 w-3.5" />
             </div>
           </div>
           <p className="mt-1.5 text-xl font-bold tracking-tight text-white sm:text-2xl">
-            {metrics.totalCount}
-            <span className="ml-1.5 text-xs font-normal text-gray-400">items</span>
+            {(catalogMetrics.totalCount || pagination.total || 0).toLocaleString()}
+            <span className="ml-1.5 text-xs font-normal text-gray-400">parts</span>
           </p>
         </div>
 
@@ -780,10 +857,10 @@ function Parts() {
           </div>
           <div className="mt-1.5 flex items-baseline gap-2">
             <p className="text-xl font-bold tracking-tight text-emerald-400 sm:text-2xl">
-              {metrics.inStockCount}
+              {(catalogMetrics.inStockCount || 0).toLocaleString()}
             </p>
             <span className="text-xs font-medium text-emerald-400/80">
-              ({metrics.inStockRate}%)
+              ({catalogMetrics.inStockRate || 100}%)
             </span>
           </div>
         </div>
@@ -797,21 +874,22 @@ function Parts() {
             </div>
           </div>
           <p className="mt-1.5 text-xl font-bold tracking-tight text-rose-400 sm:text-2xl">
-            {metrics.outOfStockCount}
-            <span className="ml-1.5 text-xs font-normal text-gray-400">items</span>
+            {(catalogMetrics.outOfStockCount || 0).toLocaleString()}
+            <span className="ml-1.5 text-xs font-normal text-gray-400">parts</span>
           </p>
         </div>
 
-        {/* Total In-Stock Valuation */}
+        {/* Available Makes / Brands */}
         <div className="rounded-2xl border border-cyan-500/20 bg-[#11151F] p-3.5 shadow-sm">
           <div className="flex items-center justify-between text-cyan-400">
-            <span className="text-xs font-medium uppercase tracking-wider">Stock Valuation</span>
+            <span className="text-xs font-medium uppercase tracking-wider">Vehicle Makes</span>
             <div className="rounded-lg bg-cyan-500/10 p-1.5 text-cyan-400 ring-1 ring-cyan-500/20">
-              <DollarSign className="h-3.5 w-3.5" />
+              <Car className="h-3.5 w-3.5" />
             </div>
           </div>
-          <p className="mt-1.5 truncate text-lg font-bold tracking-tight text-cyan-300 sm:text-xl" title={formatPrice(metrics.inStockValuation)}>
-            {formatPrice(metrics.inStockValuation)}
+          <p className="mt-1.5 text-xl font-bold tracking-tight text-cyan-300 sm:text-2xl">
+            {availableMakes.length}
+            <span className="ml-1.5 text-xs font-normal text-gray-400">brands indexed</span>
           </p>
         </div>
       </div>
@@ -823,7 +901,7 @@ function Parts() {
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Search make, model, year, part name, price..."
+            placeholder="Search make, model, year, part name, SKU, price across 55k+ parts..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded-xl border border-gray-700 bg-gray-900/90 py-2.5 pl-10 pr-9 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
@@ -831,7 +909,11 @@ function Parts() {
           {searchTerm && (
             <button
               type="button"
-              onClick={() => setSearchTerm('')}
+              onClick={() => {
+                setSearchTerm('');
+                setDebouncedSearch('');
+                setPage(1);
+              }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
             >
               <X className="h-4 w-4" />
@@ -845,7 +927,7 @@ function Parts() {
           <div className="flex items-center gap-1">
             <select
               value={availabilityFilter}
-              onChange={(e) => setAvailabilityFilter(e.target.value)}
+              onChange={(e) => handleAvailabilityChange(e.target.value)}
               className="rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-xs font-medium text-gray-200 transition focus:border-emerald-500 focus:outline-none"
             >
               <option value="all">All Availability</option>
@@ -858,10 +940,10 @@ function Parts() {
           {availableMakes.length > 0 && (
             <select
               value={makeFilter}
-              onChange={(e) => setMakeFilter(e.target.value)}
+              onChange={(e) => handleMakeChange(e.target.value)}
               className="max-w-[140px] truncate rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-xs font-medium text-gray-200 transition focus:border-emerald-500 focus:outline-none"
             >
-              <option value="all">All Makes</option>
+              <option value="all">All Makes ({availableMakes.length})</option>
               {availableMakes.map((make) => (
                 <option key={make} value={make}>{make}</option>
               ))}
@@ -872,7 +954,7 @@ function Parts() {
           <div className="flex items-center">
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
+              onChange={(e) => handleSortChange(e.target.value)}
               className="rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-xs font-medium text-gray-200 transition focus:border-emerald-500 focus:outline-none"
             >
               <option value="newest">Sort: Newest Added</option>
@@ -901,7 +983,7 @@ function Parts() {
       {/* Main Stock Table */}
       {loading ? (
         <PartsTableSkeleton />
-      ) : filteredAndSortedParts.length === 0 ? (
+      ) : parts.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-gray-800 bg-[#11151F] py-16 px-4 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-800/80 text-gray-400 ring-1 ring-gray-700">
             <Boxes className="h-7 w-7" />
@@ -936,16 +1018,33 @@ function Parts() {
       ) : (
         <div className="overflow-hidden rounded-2xl border border-gray-800 bg-[#11151F] shadow-xl">
           {/* Table summary bar */}
-          <div className="flex items-center justify-between border-b border-gray-800/80 bg-gray-800/30 px-4 py-2.5 text-xs text-gray-400">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800/80 bg-gray-800/30 px-4 py-2.5 text-xs text-gray-400">
             <span>
-              Showing <strong className="text-white">{filteredAndSortedParts.length}</strong> of{' '}
-              <strong className="text-white">{parts.length}</strong> stock parts
+              Showing <strong className="text-white">{pagination.total > 0 ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong> -{' '}
+              <strong className="text-white">{Math.min(pagination.page * pagination.limit, pagination.total)}</strong> of{' '}
+              <strong className="text-white">{pagination.total.toLocaleString()}</strong> stock parts
             </span>
-            {hasActiveFilters && (
-              <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400 ring-1 ring-emerald-500/20">
-                Filtered view
-              </span>
-            )}
+            <div className="flex items-center gap-3">
+              {hasActiveFilters && (
+                <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400 ring-1 ring-emerald-500/20">
+                  Filtered ({pagination.total.toLocaleString()} matches)
+                </span>
+              )}
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-[11px] text-gray-500">Rows:</span>
+                <select
+                  value={limit}
+                  onChange={(e) => handleLimitChange(Number(e.target.value))}
+                  className="rounded-lg border border-gray-700 bg-gray-800 px-2 py-0.5 text-xs text-white focus:border-emerald-500 focus:outline-none"
+                >
+                  <option value={20}>20</option>
+                  <option value={25}>25</option>
+                  <option value={30}>30</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           {/* Structured Responsive Table */}
@@ -964,7 +1063,7 @@ function Parts() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800/60 font-medium">
-                {filteredAndSortedParts.map((part, index) => {
+                {parts.map((part, index) => {
                   const isInStock = (part.availability || 'in stock').toLowerCase() === 'in stock';
                   const isDeleting = deletingPartId === part._id;
                   const isCopied = copiedId === part._id;
@@ -986,108 +1085,84 @@ function Parts() {
                           <button
                             type="button"
                             onClick={() => handleOpenLightbox(part, 0)}
-                            title={`Click to view ${photosCount} photo(s)`}
-                            className="group/img relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-700/80 bg-gray-900 transition-all hover:border-emerald-500 hover:ring-2 hover:ring-emerald-500/30"
+                            className="group/photo relative block h-11 w-11 overflow-hidden rounded-xl border border-gray-700 bg-gray-800 shadow-sm transition hover:border-emerald-500 focus:outline-none"
+                            title="Click to view photo gallery"
                           >
                             <img
                               src={primaryImageUrl}
-                              alt={part.part || 'Part'}
-                              className="h-full w-full object-cover transition duration-200 group-hover/img:scale-110"
-                              onError={(e) => {
-                                e.target.style.display = 'none';
-                                if (e.target.nextSibling) {
-                                  e.target.nextSibling.style.display = 'flex';
-                                }
-                              }}
+                              alt={part.part || 'Part photo'}
+                              className="h-full w-full object-cover transition duration-200 group-hover/photo:scale-110"
+                              loading="lazy"
                             />
-                            <div className="hidden h-full w-full items-center justify-center bg-gray-800 text-gray-400">
-                              <ImageIcon className="h-4 w-4" />
-                            </div>
-
-                            {/* Multi-photo badge */}
                             {photosCount > 1 && (
-                              <div className="absolute top-0.5 right-0.5 rounded-md bg-black/80 px-1 py-0.2 text-[9px] font-bold text-white shadow backdrop-blur-xs">
-                                +{photosCount - 1}
-                              </div>
+                              <span className="absolute bottom-0.5 right-0.5 flex items-center gap-0.5 rounded-md bg-black/75 px-1 py-0.2 text-[9px] font-bold text-white backdrop-blur-xs">
+                                <ImageIcon className="h-2.5 w-2.5" />
+                                {photosCount}
+                              </span>
                             )}
-
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover/img:opacity-100">
-                              <ZoomIn className="h-4 w-4 text-white" />
-                            </div>
                           </button>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(part)}
-                            title="No photos - Click to add up to 4 photos"
-                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-dashed border-gray-700 bg-gray-800/40 text-gray-500 transition hover:border-emerald-500 hover:bg-gray-800 hover:text-emerald-400"
+                          <div
+                            className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-800 bg-gray-800/50 text-gray-500"
+                            title="No photo uploaded"
                           >
                             <Camera className="h-4 w-4" />
-                          </button>
+                          </div>
                         )}
                       </td>
 
-                      {/* Part Requested / Title */}
-                      <td className="py-3.5 px-3">
-                        <div className="flex items-start gap-2.5">
-                          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gray-800 text-gray-300 ring-1 ring-gray-700/60 group-hover:bg-emerald-500/10 group-hover:text-emerald-400 group-hover:ring-emerald-500/30 transition-colors">
-                            <Wrench className="h-3.5 w-3.5" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-white group-hover:text-emerald-300 transition-colors">
-                              {part.part || 'Unnamed Part'}
-                            </p>
-                            <div className="flex max-w-xs flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-gray-400">
-                              {part.externalId && <span className="font-mono text-cyan-300">{part.externalId}</span>}
-                              {part.title && <span className="truncate" title={part.title}>{part.title}</span>}
-                              {part.trim && <span>Trim: {part.trim}</span>}
-                              {part.condition && <span>{part.condition}</span>}
-                              {photosCount > 0 && <span>{photosCount} photo{photosCount > 1 ? 's' : ''}</span>}
-                            </div>
-                          </div>
+                      {/* Part Description / Title */}
+                      <td className="max-w-[260px] px-3 py-3.5">
+                        <div className="font-semibold text-white truncate" title={part.title || part.part}>
+                          {part.part || 'Unnamed Part'}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-400">
+                          {part.externalId && (
+                            <span className="font-mono text-[10px] text-emerald-400 bg-emerald-500/10 px-1 rounded">
+                              {part.externalId}
+                            </span>
+                          )}
+                          {part.condition && <span className="capitalize">{part.condition}</span>}
+                          {part.trim && <span>• {part.trim}</span>}
                         </div>
                       </td>
 
                       {/* Make */}
-                      <td className="whitespace-nowrap px-3 py-3.5">
-                        <span className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700/70 bg-gray-800/80 px-2.5 py-1 text-xs font-semibold text-gray-200">
-                          <Car className="h-3 w-3 text-gray-400" />
-                          {part.make}
-                        </span>
+                      <td className="whitespace-nowrap px-3 py-3.5 text-gray-300">
+                        {part.make || '—'}
                       </td>
 
                       {/* Model */}
-                      <td className="whitespace-nowrap px-3 py-3.5 text-xs font-medium text-gray-300">
-                        {part.model}
+                      <td className="whitespace-nowrap px-3 py-3.5 text-gray-300">
+                        {part.model || '—'}
                       </td>
 
                       {/* Year */}
-                      <td className="whitespace-nowrap px-3 py-3.5">
-                        <span className="inline-flex items-center rounded-md border border-gray-700/60 bg-gray-800/50 px-2 py-0.5 text-xs font-bold text-gray-300">
-                          {part.year}
-                        </span>
+                      <td className="whitespace-nowrap px-3 py-3.5 font-mono text-gray-300">
+                        {part.year || '—'}
                       </td>
 
                       {/* Price */}
-                      <td className="whitespace-nowrap px-3 py-3.5">
-                        <span className="font-mono text-sm font-bold text-emerald-400">
-                          {formatPrice(part.price, part.currency)}
-                        </span>
+                      <td className="whitespace-nowrap px-3 py-3.5 font-semibold text-white">
+                        {formatPrice(part.price, part.currency)}
                       </td>
 
                       {/* Availability */}
                       <td className="whitespace-nowrap px-3 py-3.5">
-                        {isInStock ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            In Stock
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 bg-rose-500/15 px-2.5 py-1 text-[11px] font-semibold text-rose-300">
-                            <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
-                            Out of Stock
-                          </span>
-                        )}
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            isInStock
+                              ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20'
+                              : 'bg-rose-500/10 text-rose-400 ring-1 ring-rose-500/20'
+                          }`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              isInStock ? 'bg-emerald-400' : 'bg-rose-400'
+                            }`}
+                          />
+                          {isInStock ? 'In Stock' : 'Out of Stock'}
+                        </span>
                       </td>
 
                       {/* Actions */}
@@ -1138,6 +1213,59 @@ function Parts() {
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination Footer */}
+          <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-800 bg-[#161B26] px-4 py-3 sm:flex-row text-xs text-gray-400">
+            <div>
+              Page <strong className="text-white">{pagination.page}</strong> of{' '}
+              <strong className="text-white">{pagination.totalPages || 1}</strong>
+            </div>
+
+            {pagination.totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(page - 1)}
+                  disabled={page <= 1 || loading}
+                  className="flex items-center gap-1 rounded-lg border border-gray-700 bg-gray-800/80 px-2.5 py-1.5 text-xs text-gray-300 transition hover:bg-gray-700 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  <span>Previous</span>
+                </button>
+
+                <div className="flex items-center gap-1 px-1">
+                  {pageNumbers.map((p, idx) =>
+                    p === '...' ? (
+                      <span key={`ellipsis-${idx}`} className="px-1 text-gray-500">...</span>
+                    ) : (
+                      <button
+                        key={`page-${p}`}
+                        type="button"
+                        onClick={() => handlePageChange(p)}
+                        className={`h-7 min-w-[28px] px-1.5 rounded-lg text-xs font-medium transition ${
+                          page === p
+                            ? 'bg-emerald-600 text-white font-bold shadow-sm shadow-emerald-600/30'
+                            : 'border border-gray-800 bg-gray-800/70 text-gray-300 hover:bg-gray-700 hover:text-white'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(page + 1)}
+                  disabled={page >= pagination.totalPages || loading}
+                  className="flex items-center gap-1 rounded-lg border border-gray-700 bg-gray-800/80 px-2.5 py-1.5 text-xs text-gray-300 transition hover:bg-gray-700 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <span>Next</span>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1632,6 +1760,152 @@ function Parts() {
               >
                 <Pencil className="h-3.5 w-3.5" />
                 Edit Part & Photos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Google Sheets Sync Modal */}
+      {sheetSyncModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          onClick={() => !syncingSheet && setSheetSyncModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-800 bg-[#161B26] shadow-2xl shadow-black/80 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-gray-800 bg-[#1C2333]/90 px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/30">
+                  <FileSpreadsheet className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-white">Sync from Google Sheet</h3>
+                  <p className="text-xs text-gray-400">Import and update parts stock directly from your spreadsheet</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !syncingSheet && setSheetSyncModalOpen(false)}
+                disabled={syncingSheet}
+                className="rounded-xl p-1.5 text-gray-400 transition hover:bg-gray-800 hover:text-white disabled:opacity-40"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="space-y-4 p-6">
+              {syncConfig.isConfigured ? (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-300">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-emerald-200">✅ .env Configured URL Active</span>
+                    <span className="font-mono text-[11px] text-emerald-400/80">{syncConfig.maskedUrl}</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-emerald-300/80">
+                    Click <strong>Sync Now</strong> to fetch the latest stock from your backend .env spreadsheet, or enter a custom link below to override.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-gray-700/80 bg-gray-800/50 p-3.5 text-xs text-gray-300">
+                  <p className="font-semibold text-white">How to connect your Google Sheet:</p>
+                  <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-[11px] text-gray-400">
+                    <li>Open your Google Sheet with your parts catalog.</li>
+                    <li>Click <strong>File</strong> → <strong>Share</strong> → <strong>Publish to web</strong>.</li>
+                    <li>Select <strong>Comma-separated values (.csv)</strong> and click <strong>Publish</strong>.</li>
+                    <li>Paste that link below (or save in <code className="text-emerald-400">backend/.env</code> as <code className="text-emerald-400">GOOGLE_SHEETS_PARTS_URL</code>).</li>
+                  </ol>
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-300">
+                  {syncConfig.isConfigured ? 'Custom / Override Google Sheet URL (Optional)' : 'Google Sheet Published CSV URL'}
+                </label>
+                <input
+                  type="url"
+                  value={sheetUrlInput}
+                  onChange={(e) => setSheetUrlInput(e.target.value)}
+                  placeholder={
+                    syncConfig.isConfigured
+                      ? 'Leave blank to use .env URL, or paste new link...'
+                      : 'https://docs.google.com/spreadsheets/d/.../pub?output=csv'
+                  }
+                  className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Supported Columns Guide */}
+              <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-3">
+                <span className="text-[11px] font-semibold text-gray-400">Required & Supported Columns:</span>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {['Part', 'Make', 'Model', 'Year', 'Price', 'Availability', 'Trim', 'Condition', 'Image URL', 'ID / SKU'].map((col) => (
+                    <span
+                      key={col}
+                      className="rounded-md bg-gray-800 px-2 py-0.5 text-[10px] font-medium text-gray-300 border border-gray-700/60"
+                    >
+                      {col}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Previous Sync Stats if available */}
+              {syncStats && (
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/30 p-3 text-xs">
+                  <p className="font-semibold text-emerald-400">Last Sync Summary:</p>
+                  <div className="mt-1 grid grid-cols-4 gap-2 text-center text-[11px]">
+                    <div className="rounded-lg bg-gray-800/80 p-1.5">
+                      <span className="text-gray-400 block text-[10px]">Total</span>
+                      <span className="font-bold text-white">{syncStats.totalRows}</span>
+                    </div>
+                    <div className="rounded-lg bg-emerald-500/20 p-1.5">
+                      <span className="text-emerald-400 block text-[10px]">Added</span>
+                      <span className="font-bold text-emerald-300">+{syncStats.imported}</span>
+                    </div>
+                    <div className="rounded-lg bg-teal-500/20 p-1.5">
+                      <span className="text-teal-400 block text-[10px]">Updated</span>
+                      <span className="font-bold text-teal-300">{syncStats.updated}</span>
+                    </div>
+                    <div className="rounded-lg bg-gray-800/80 p-1.5">
+                      <span className="text-gray-400 block text-[10px]">Skipped</span>
+                      <span className="font-bold text-gray-400">{syncStats.skipped}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-2.5 border-t border-gray-800 bg-[#1C2333]/90 px-6 py-3.5">
+              <button
+                type="button"
+                onClick={() => setSheetSyncModalOpen(false)}
+                disabled={syncingSheet}
+                className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-2 text-xs font-medium text-gray-300 transition hover:bg-gray-700 hover:text-white disabled:opacity-50"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSyncSheet()}
+                disabled={syncingSheet || (!syncConfig.isConfigured && !sheetUrlInput.trim())}
+                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-5 py-2 text-xs font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50"
+              >
+                {syncingSheet ? (
+                  <>
+                    <InlineLoader size={14} color="#ffffff" />
+                    <span>Syncing Catalog...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileSpreadsheet className="h-4 w-4" />
+                    <span>Sync Now</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

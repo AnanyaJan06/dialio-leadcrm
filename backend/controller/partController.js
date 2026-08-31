@@ -146,7 +146,19 @@ export const createPart = async (req, res) => {
 
 export const getParts = async (req, res) => {
   try {
-    const { search } = req.query;
+    const {
+      search,
+      page = 1,
+      limit = 25,
+      availability = 'all',
+      make = 'all',
+      sort = 'newest',
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 25));
+    const skip = (pageNum - 1) * limitNum;
+
     const filter = {};
 
     if (search?.trim()) {
@@ -164,13 +176,62 @@ export const getParts = async (req, res) => {
       ];
     }
 
-    const parts = await Part.find(filter)
-      .populate('createdBy', 'name email role')
-      .sort({ createdAt: -1 })
-      .limit(500)
-      .lean();
+    if (availability && availability !== 'all') {
+      filter.availability = availability.toLowerCase();
+    }
 
-    res.json(parts);
+    if (make && make !== 'all') {
+      filter.make = { $regex: `^${escapeRegex(make.trim())}$`, $options: 'i' };
+    }
+
+    let sortObj = { createdAt: -1, _id: -1 };
+    if (sort === 'oldest') sortObj = { createdAt: 1, _id: 1 };
+    else if (sort === 'price-asc') sortObj = { price: 1, _id: -1 };
+    else if (sort === 'price-desc') sortObj = { price: -1, _id: -1 };
+    else if (sort === 'year-desc') sortObj = { year: -1, make: 1, model: 1, _id: -1 };
+    else if (sort === 'make-asc') sortObj = { make: 1, model: 1, _id: -1 };
+
+    const [
+      parts,
+      totalFiltered,
+      totalCount,
+      inStockCount,
+      distinctMakes
+    ] = await Promise.all([
+      Part.find(filter)
+        .populate('createdBy', 'name email role')
+        .sort(sortObj)
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      Part.countDocuments(filter),
+      Part.countDocuments(),
+      Part.countDocuments({ availability: 'in stock' }),
+      Part.distinct('make'),
+    ]);
+
+    const totalPages = Math.ceil(totalFiltered / limitNum) || 1;
+    const sortedMakes = (distinctMakes || [])
+      .filter((m) => m && m.trim())
+      .sort((a, b) => a.localeCompare(b));
+
+    res.json({
+      parts,
+      pagination: {
+        total: totalFiltered,
+        page: pageNum,
+        limit: limitNum,
+        totalPages,
+        hasMore: pageNum < totalPages,
+      },
+      metrics: {
+        totalCount,
+        inStockCount,
+        outOfStockCount: Math.max(0, totalCount - inStockCount),
+        inStockRate: totalCount > 0 ? Math.round((inStockCount / totalCount) * 100) : 0,
+        availableMakes: sortedMakes,
+      },
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -215,4 +276,302 @@ export const deletePart = async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
+};
+
+const HEADER_ALIASES = {
+  externalId: ['id', 'externalid', 'sheetid', 'sku', 'partnumber', 'partnum', 'partno', 'partcode', 'stocknumber', 'stockno', 'stocknum', 'itemnumber', 'itemno', 'code', 'productid', 'vin'],
+  title: ['title', 'parttitle', 'producttitle', 'fulltitle', 'itemtitle', 'listingtitle'],
+  part: ['part', 'partname', 'partrequested', 'item', 'itemname', 'partdescription', 'productname', 'component'],
+  make: ['make', 'carmake', 'vehiclemake', 'brand', 'manufacturer', 'auto'],
+  model: ['model', 'carmodel', 'vehiclemodel'],
+  year: ['year', 'caryear', 'vehicleyear', 'yr'],
+  trim: ['trim', 'edition', 'submodel', 'engine', 'specs', 'trimlevel', 'version'],
+  price: ['price', 'cost', 'retailprice', 'quoteprice', 'rate', 'amount', 'usd', 'priceusd', 'partprice'],
+  currency: ['currency', 'curr'],
+  availability: ['availability', 'status', 'instock', 'stockstatus', 'stock', 'available', 'inventory'],
+  condition: ['condition', 'grade', 'mileage', 'state', 'quality', 'notes', 'descriptioncondition'],
+  productType: ['producttype', 'product_type', 'type', 'category', 'itemtype'],
+  imageUrl: ['imageurl', 'image', 'photo', 'photourl', 'pic', 'picture', 'images', 'imageurls', 'photos', 'pictureurl', 'link'],
+};
+
+const normalizeGoogleSheetUrl = (rawUrl) => {
+  const url = clean(rawUrl);
+  if (!url) return '';
+
+  if (url.includes('/pub?') && (url.includes('output=csv') || url.includes('output=tsv'))) {
+    return url;
+  }
+  if (url.includes('/export?') && url.includes('format=csv')) {
+    return url;
+  }
+
+  const match = url.match(/https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (match) {
+    const docId = match[1];
+    const gidMatch = url.match(/[?&#]gid=([0-9]+)/);
+    const gid = gidMatch ? gidMatch[1] : '0';
+    return `https://docs.google.com/spreadsheets/d/${docId}/export?format=csv&gid=${gid}`;
+  }
+
+  return url;
+};
+
+const parseCsvContent = (text) => {
+  const rows = [];
+  let currentRow = [];
+  let currentField = '';
+  let insideQuotes = false;
+
+  const normalized = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  for (let i = 0; i < normalized.length; i++) {
+    const char = normalized[i];
+    const nextChar = normalized[i + 1];
+
+    if (char === '"') {
+      if (insideQuotes && nextChar === '"') {
+        currentField += '"';
+        i++;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+    } else if (char === ',' && !insideQuotes) {
+      currentRow.push(currentField.trim());
+      currentField = '';
+    } else if (char === '\n' && !insideQuotes) {
+      currentRow.push(currentField.trim());
+      if (currentRow.some((f) => f.length > 0)) {
+        rows.push(currentRow);
+      }
+      currentRow = [];
+      currentField = '';
+    } else {
+      currentField += char;
+    }
+  }
+
+  if (currentField.length > 0 || currentRow.length > 0) {
+    currentRow.push(currentField.trim());
+    if (currentRow.some((f) => f.length > 0)) {
+      rows.push(currentRow);
+    }
+  }
+
+  return rows;
+};
+
+const mapHeaders = (headerRow) => {
+  const mapping = {};
+  const cleanHeader = (h) => String(h || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  headerRow.forEach((raw, idx) => {
+    const cleaned = cleanHeader(raw);
+    for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
+      if (mapping[field] === undefined && aliases.includes(cleaned)) {
+        mapping[field] = idx;
+      }
+    }
+  });
+
+  // Secondary fuzzy match for any unmapped core fields
+  headerRow.forEach((raw, idx) => {
+    const cleaned = cleanHeader(raw);
+    for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
+      if (mapping[field] === undefined) {
+        if (aliases.some((alias) => cleaned.includes(alias) || (alias.length > 3 && alias.includes(cleaned)))) {
+          mapping[field] = idx;
+        }
+      }
+    }
+  });
+
+  return mapping;
+};
+
+export const syncGoogleSheetParts = async (req, res) => {
+  try {
+    const targetUrl = normalizeGoogleSheetUrl(req.body?.sheetUrl || process.env.GOOGLE_SHEETS_PARTS_URL);
+
+    if (!targetUrl) {
+      return res.status(400).json({
+        message: 'No Google Sheet CSV URL configured. Please add GOOGLE_SHEETS_PARTS_URL in backend .env or provide a Sheet URL.',
+      });
+    }
+
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'LeadCRM-PartsSync/1.0',
+        Accept: 'text/csv,text/plain,*/*',
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(400).json({
+        message: `Failed to fetch Google Sheet (${response.status} ${response.statusText}). Make sure the sheet is published to web as CSV.`,
+      });
+    }
+
+    const csvText = await response.text();
+
+    if (csvText.trim().startsWith('<!DOCTYPE html') || csvText.includes('<html')) {
+      return res.status(400).json({
+        message: 'Received HTML instead of CSV. Ensure your Google Sheet is published via File > Share > Publish to web > CSV.',
+      });
+    }
+
+    const rows = parseCsvContent(csvText);
+    if (rows.length < 2) {
+      return res.status(400).json({
+        message: 'The Google Sheet is empty or missing data rows.',
+      });
+    }
+
+    const headerRow = rows[0];
+    const mapping = mapHeaders(headerRow);
+
+    if (mapping.part === undefined || mapping.make === undefined || mapping.model === undefined || mapping.year === undefined) {
+      return res.status(400).json({
+        message: 'Google Sheet must contain columns for Part, Make, Model, and Year.',
+        detectedHeaders: headerRow,
+      });
+    }
+
+    let createdCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
+    const errors = [];
+    const operations = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const getVal = (field) => (mapping[field] !== undefined ? clean(row[mapping[field]]) : '');
+
+      const externalId = getVal('externalId');
+      const customTitle = getVal('title');
+      const partName = getVal('part');
+      const make = getVal('make');
+      const model = getVal('model');
+      const year = getVal('year');
+      const trim = getVal('trim');
+      const rawPrice = getVal('price');
+      const currency = getVal('currency') || 'USD';
+      const availability = normalizeAvailability(getVal('availability'));
+      const condition = getVal('condition');
+      const productType = getVal('productType');
+      const rawImages = getVal('imageUrl');
+
+      if (!make || !model || !year || !partName) {
+        skippedCount++;
+        continue;
+      }
+
+      // Parse price
+      const cleanPrice = String(rawPrice).replace(/[^0-9.-]/g, '');
+      const parsedPrice = parseFloat(cleanPrice);
+      const price = Number.isFinite(parsedPrice) ? Math.max(0, parsedPrice) : 0;
+
+      // Parse images (separated by comma, semicolon, space, or pipe)
+      const imagesList = rawImages
+        ? rawImages.split(/[\s,;|]+/).map(clean).filter((url) => url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/'))
+        : [];
+      const primaryImage = imagesList[0] || '';
+
+      const partData = {
+        title: customTitle || buildPartTitle({ part: partName, year, make, model, trim }),
+        part: partName,
+        make,
+        model,
+        year,
+        trim,
+        price,
+        currency: currency.toUpperCase(),
+        availability,
+        condition,
+        productType,
+        imageUrl: primaryImage,
+        imageUrls: imagesList.slice(0, 4),
+      };
+
+      if (externalId) {
+        operations.push({
+          updateOne: {
+            filter: { externalId },
+            update: {
+              $set: {
+                ...partData,
+                externalId,
+              },
+              $setOnInsert: {
+                createdBy: req.user?.id || null,
+              },
+            },
+            upsert: true,
+          },
+        });
+      } else {
+        operations.push({
+          updateOne: {
+            filter: {
+              make,
+              model,
+              year: String(year).trim(),
+              part: partName,
+              ...(trim ? { trim } : {}),
+            },
+            update: {
+              $set: partData,
+              $setOnInsert: {
+                createdBy: req.user?.id || null,
+              },
+            },
+            upsert: true,
+          },
+        });
+      }
+    }
+
+    const BATCH_SIZE = 2500;
+    for (let i = 0; i < operations.length; i += BATCH_SIZE) {
+      const batch = operations.slice(i, i + BATCH_SIZE);
+      try {
+        const resBatch = await Part.bulkWrite(batch, { ordered: false });
+        createdCount += (resBatch.upsertedCount || 0) + (resBatch.insertedCount || 0);
+        updatedCount += (resBatch.modifiedCount || 0) + (resBatch.matchedCount || 0);
+      } catch (batchErr) {
+        if (errors.length < 5) {
+          errors.push(`Batch error at rows ${i}-${i + BATCH_SIZE}: ${batchErr.message}`);
+        }
+      }
+    }
+
+    const totalProcessed = createdCount + updatedCount;
+
+    res.json({
+      message: `Successfully synced ${totalProcessed} parts from Google Sheet (${createdCount} added/upserted, ${updatedCount} updated, ${skippedCount} skipped).`,
+      stats: {
+        totalRows: rows.length - 1,
+        imported: createdCount,
+        updated: updatedCount,
+        skipped: skippedCount,
+        errors,
+      },
+    });
+  } catch (error) {
+    console.error('Google Sheet Sync Error:', error);
+    res.status(500).json({ message: error.message || 'Failed to sync with Google Sheet' });
+  }
+};
+
+export const getGoogleSheetSyncConfig = (req, res) => {
+  const envUrl = process.env.GOOGLE_SHEETS_PARTS_URL || '';
+  const isConfigured = Boolean(envUrl.trim());
+
+  res.json({
+    isConfigured,
+    maskedUrl: isConfigured
+      ? envUrl.length > 25
+        ? `${envUrl.slice(0, 18)}...${envUrl.slice(-8)}`
+        : envUrl
+      : '',
+  });
 };
