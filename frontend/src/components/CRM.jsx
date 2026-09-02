@@ -539,7 +539,7 @@ function CRM() {
       )}
 
       <div className="rounded-2xl border border-gray-800 bg-gray-900 p-4">
-        <form onSubmit={handleApplyFilters} className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <form onSubmit={handleApplyFilters} className={`grid gap-3 md:grid-cols-3 ${currentUser?.role === 'admin' ? 'xl:grid-cols-6' : 'xl:grid-cols-5'}`}>
           <input
             type="text"
             name="search"
@@ -552,10 +552,12 @@ function CRM() {
             <option value="">All statuses</option>
             {LEAD_DISPOSITIONS.map((status) => <option key={status} value={status}>{status}</option>)}
           </select>
-          <select name="assignee" value={filters.assignee} onChange={handleFilterChange} className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white">
-            <option value="">All assignees</option>
-            {users.map((user) => <option key={user._id || user.id} value={user._id || user.id}>{user.name}</option>)}
-          </select>
+          {currentUser?.role === 'admin' && (
+            <select name="assignee" value={filters.assignee} onChange={handleFilterChange} className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white">
+              <option value="">All assignees</option>
+              {users.map((user) => <option key={user._id || user.id} value={user._id || user.id}>{user.name}</option>)}
+            </select>
+          )}
           <select name="source" value={filters.source} onChange={handleFilterChange} className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white">
             <option value="">All sources</option>
             <option value="manual">Manual</option>
@@ -565,7 +567,7 @@ function CRM() {
           </select>
           <input type="date" name="fromDate" value={filters.fromDate} onChange={handleFilterChange} className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
           <input type="date" name="toDate" value={filters.toDate} onChange={handleFilterChange} className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
-          <div className="flex gap-2 md:col-span-3 xl:col-span-6">
+          <div className={`flex gap-2 md:col-span-3 ${currentUser?.role === 'admin' ? 'xl:col-span-6' : 'xl:col-span-5'}`}>
             <button type="submit" className="rounded-xl bg-[#059669] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#047857]">Apply Filters</button>
             <button type="button" onClick={handleResetFilters} className="rounded-xl border border-gray-700 px-4 py-2.5 text-sm font-semibold text-gray-300 transition hover:border-gray-600 hover:text-white">Reset</button>
           </div>

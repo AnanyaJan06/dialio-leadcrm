@@ -96,9 +96,9 @@ export const createLead = async (req, res) => {
 
     let assignedTo = null;
 
-    const nextUser = await getNextAssignee();
-    if (nextUser?._id) {
-      assignedTo = nextUser._id;
+    if (req.user?.role === 'admin') {
+      const nextUser = await getNextAssignee();
+      assignedTo = nextUser?._id || req.user?.id || null;
     } else {
       assignedTo = req.user?.id || null;
     }
@@ -179,8 +179,14 @@ export const getLeads = async (req, res) => {
 
     const filter = {};
 
+    // Role-based visibility: regular users view ONLY leads assigned to them; admins see all (or filtered by assignee)
+    if (req.user?.role !== 'admin') {
+      filter.assignedTo = req.user.id;
+    } else if (assignee) {
+      filter.assignedTo = assignee;
+    }
+
     if (status) filter.disposition = status;
-    if (assignee) filter.assignedTo = assignee;
     if (source) filter.source = source;
     if (search) {
       const term = String(search).trim();
@@ -242,14 +248,18 @@ export const updateLeadDisposition = async (req, res) => {
       return res.status(400).json({ message: 'A valid lead status is required' });
     }
 
-    const lead = await Lead.findByIdAndUpdate(
-      req.params.id,
+    const leadFilter = req.user?.role === 'admin'
+      ? { _id: req.params.id }
+      : { _id: req.params.id, assignedTo: req.user.id };
+
+    const lead = await Lead.findOneAndUpdate(
+      leadFilter,
       { disposition },
       { new: true, runValidators: true }
     );
 
     if (!lead) {
-      return res.status(404).json({ message: 'Lead not found' });
+      return res.status(404).json({ message: 'Lead not found or unauthorized' });
     }
 
     const populatedLead = await populateLead(lead._id);
@@ -269,9 +279,13 @@ export const addLeadNote = async (req, res) => {
       return res.status(400).json({ message: 'A note is required' });
     }
 
-    const lead = await Lead.findById(req.params.id);
+    const leadFilter = req.user?.role === 'admin'
+      ? { _id: req.params.id }
+      : { _id: req.params.id, assignedTo: req.user.id };
+
+    const lead = await Lead.findOne(leadFilter);
     if (!lead) {
-      return res.status(404).json({ message: 'Lead not found' });
+      return res.status(404).json({ message: 'Lead not found or unauthorized' });
     }
 
     appendLeadNote(lead, req, trimmedNote);
@@ -289,9 +303,13 @@ export const updateLeadFollowUp = async (req, res) => {
   try {
     const { followUpAt, followUpNote } = req.body;
 
-    const lead = await Lead.findById(req.params.id);
+    const leadFilter = req.user?.role === 'admin'
+      ? { _id: req.params.id }
+      : { _id: req.params.id, assignedTo: req.user.id };
+
+    const lead = await Lead.findOne(leadFilter);
     if (!lead) {
-      return res.status(404).json({ message: 'Lead not found' });
+      return res.status(404).json({ message: 'Lead not found or unauthorized' });
     }
 
     const trimmedFollowUpNote = followUpNote?.trim() || '';
@@ -357,9 +375,13 @@ export const updateLeadFollowUp = async (req, res) => {
 
 export const completeLeadFollowUp = async (req, res) => {
   try {
-    const lead = await Lead.findById(req.params.id);
+    const leadFilter = req.user?.role === 'admin'
+      ? { _id: req.params.id }
+      : { _id: req.params.id, assignedTo: req.user.id };
+
+    const lead = await Lead.findOne(leadFilter);
     if (!lead) {
-      return res.status(404).json({ message: 'Lead not found' });
+      return res.status(404).json({ message: 'Lead not found or unauthorized' });
     }
 
     const completedParts = ['Follow-up completed'];

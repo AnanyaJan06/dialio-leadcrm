@@ -30,4 +30,20 @@ const authMiddleware = async (req, res, next) => {
   }
 };
 
+export const optionalAuthMiddleware = async (req, res, next) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (token) {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findById(decoded.id).select('-password');
+      if (user) {
+        req.user = user;
+      }
+    }
+  } catch (error) {
+    // Continue without req.user if token is absent or invalid
+  }
+  next();
+};
+
 export default authMiddleware;
