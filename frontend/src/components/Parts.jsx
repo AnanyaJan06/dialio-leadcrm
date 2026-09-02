@@ -1,21 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Boxes,
-  Camera,
   Car,
+  FileSpreadsheet,
   ChevronLeft,
   ChevronRight,
-  FileSpreadsheet,
-  Image as ImageIcon,
-  ImagePlus,
-  Link as LinkIcon,
   PackageCheck,
   PackageX,
   Pencil,
   Plus,
   RefreshCw,
   Search,
-  Star,
   Tag,
   Trash2,
   X
@@ -25,8 +20,6 @@ import InlineLoader from './ui/InlineLoader.jsx';
 import { confirmAction } from '../utils/confirmDialog.js';
 import { showErrorToast, showSuccessToast } from '../utils/toast.js';
 import { BACKEND_URL } from '../config/api.js';
-
-const MAX_PHOTOS = 4;
 
 const emptyForm = {
   externalId: '',
@@ -41,8 +34,6 @@ const emptyForm = {
   availability: 'in stock',
   condition: '',
   productType: '',
-  imageUrl: '',
-  imageUrls: [],
 };
 
 const formatPrice = (value, currency = 'USD') => {
@@ -66,19 +57,6 @@ const formatDate = (dateString) => {
     day: 'numeric',
     year: 'numeric',
   });
-};
-
-const resolveImageUrl = (url) => {
-  if (!url) return '';
-  if (
-    url.startsWith('http://') ||
-    url.startsWith('https://') ||
-    url.startsWith('blob:') ||
-    url.startsWith('data:')
-  ) {
-    return url;
-  }
-  return `${BACKEND_URL}${url.startsWith('/') ? '' : '/'}${url}`;
 };
 
 function PartsTableSkeleton() {
@@ -132,7 +110,6 @@ function Parts() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [uploadingCount, setUploadingCount] = useState(0);
   const [deletingPartId, setDeletingPartId] = useState('');
 
   // Google Sheet Sync State
@@ -146,13 +123,6 @@ function Parts() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPart, setEditingPart] = useState(null); // null = Add mode, object = Edit mode
   const [form, setForm] = useState(emptyForm);
-  const [showUrlInput, setShowUrlInput] = useState(false);
-  const [customImageUrl, setCustomImageUrl] = useState('');
-  const [dragOver, setDragOver] = useState(false);
-
-  // Lightbox Preview Gallery Modal
-  const [previewPart, setPreviewPart] = useState(null);
-  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
@@ -180,8 +150,6 @@ function Parts() {
     inStockRate: 0,
     availableMakes: [],
   });
-
-  const fileInputRef = useRef(null);
 
   const authHeaders = useMemo(() => ({
     Authorization: `Bearer ${localStorage.getItem('token')}`,
@@ -375,18 +343,12 @@ function Parts() {
   const handleOpenAddModal = () => {
     setEditingPart(null);
     setForm(emptyForm);
-    setShowUrlInput(false);
-    setCustomImageUrl('');
     setModalOpen(true);
   };
 
   // Open Modal for Edit
   const handleOpenEditModal = (part) => {
     setEditingPart(part);
-    const existingImages = Array.isArray(part.imageUrls) && part.imageUrls.length > 0
-      ? part.imageUrls.filter(Boolean)
-      : (part.imageUrl ? [part.imageUrl] : []);
-
     setForm({
       externalId: part.externalId || '',
       title: part.title || '',
@@ -400,21 +362,15 @@ function Parts() {
       availability: part.availability || 'in stock',
       condition: part.condition || '',
       productType: part.productType || '',
-      imageUrl: existingImages[0] || '',
-      imageUrls: existingImages,
     });
-    setShowUrlInput(false);
-    setCustomImageUrl('');
     setModalOpen(true);
   };
 
   const handleCloseModal = () => {
-    if (saving || uploadingCount > 0) return;
+    if (saving) return;
     setModalOpen(false);
     setEditingPart(null);
     setForm(emptyForm);
-    setShowUrlInput(false);
-    setCustomImageUrl('');
   };
 
   const handleFormChange = (event) => {
@@ -423,145 +379,6 @@ function Parts() {
       ...current,
       [name]: value,
     }));
-  };
-
-  // Upload Single Image Helper
-  const uploadSingleImage = async (file) => {
-    const res = await fetch(`${BACKEND_URL}/api/parts/upload-image`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': file.type,
-        ...authHeaders,
-      },
-      body: file,
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || 'Failed to upload image');
-    return data.imageUrl;
-  };
-
-  // Multi-image upload handler (up to 4 photos)
-  const handleImageFilesSelect = async (filesList) => {
-    if (!filesList || filesList.length === 0) return;
-
-    const currentImages = form.imageUrls || [];
-    const availableSlots = MAX_PHOTOS - currentImages.length;
-
-    if (availableSlots <= 0) {
-      showErrorToast(`Maximum of ${MAX_PHOTOS} photos already uploaded.`);
-      return;
-    }
-
-    const filesArray = Array.from(filesList).filter((file) => {
-      if (!file.type.startsWith('image/')) {
-        showErrorToast(`Skipped "${file.name}": not a valid image format.`);
-        return false;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        showErrorToast(`Skipped "${file.name}": exceeds 10MB limit.`);
-        return false;
-      }
-      return true;
-    });
-
-    if (filesArray.length === 0) return;
-
-    const filesToUpload = filesArray.slice(0, availableSlots);
-    if (filesArray.length > availableSlots) {
-      showErrorToast(`Only ${availableSlots} more photo(s) allowed. Uploading first ${availableSlots}.`);
-    }
-
-    try {
-      setUploadingCount(filesToUpload.length);
-      const uploadPromises = filesToUpload.map((file) => uploadSingleImage(file));
-      const uploadedUrls = await Promise.all(uploadPromises);
-
-      setForm((current) => {
-        const nextList = [...(current.imageUrls || []), ...uploadedUrls].slice(0, MAX_PHOTOS);
-        return {
-          ...current,
-          imageUrl: nextList[0] || '',
-          imageUrls: nextList,
-        };
-      });
-
-      showSuccessToast(
-        uploadedUrls.length === 1
-          ? 'Photo uploaded successfully'
-          : `${uploadedUrls.length} photos uploaded successfully`
-      );
-    } catch (error) {
-      showErrorToast(error.message || 'Failed to upload one or more photos');
-    } finally {
-      setUploadingCount(0);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
-
-  const handleFileInputChange = (event) => {
-    handleImageFilesSelect(event.target.files);
-  };
-
-  const handleDrop = (event) => {
-    event.preventDefault();
-    setDragOver(false);
-    if (event.dataTransfer.files) {
-      handleImageFilesSelect(event.dataTransfer.files);
-    }
-  };
-
-  const handleRemovePhoto = (indexToRemove) => {
-    setForm((current) => {
-      const nextList = (current.imageUrls || []).filter((_, idx) => idx !== indexToRemove);
-      return {
-        ...current,
-        imageUrl: nextList[0] || '',
-        imageUrls: nextList,
-      };
-    });
-  };
-
-  const handleSetPrimaryPhoto = (indexToPrimary) => {
-    setForm((current) => {
-      const list = [...(current.imageUrls || [])];
-      const [item] = list.splice(indexToPrimary, 1);
-      const nextList = [item, ...list];
-      return {
-        ...current,
-        imageUrl: nextList[0] || '',
-        imageUrls: nextList,
-      };
-    });
-    showSuccessToast('Cover photo updated');
-  };
-
-  const handleAddCustomImageUrl = () => {
-    const trimmed = customImageUrl.trim();
-    if (!trimmed) {
-      showErrorToast('Please enter a valid image URL');
-      return;
-    }
-
-    if ((form.imageUrls || []).length >= MAX_PHOTOS) {
-      showErrorToast(`Maximum of ${MAX_PHOTOS} photos reached.`);
-      return;
-    }
-
-    setForm((current) => {
-      const nextList = [...(current.imageUrls || []), trimmed].slice(0, MAX_PHOTOS);
-      return {
-        ...current,
-        imageUrl: nextList[0] || '',
-        imageUrls: nextList,
-      };
-    });
-
-    setCustomImageUrl('');
-    setShowUrlInput(false);
-    showSuccessToast('Image URL attached');
   };
 
   const handleFormSubmit = async (event) => {
@@ -597,9 +414,6 @@ function Parts() {
         : `${BACKEND_URL}/api/parts`;
       const method = isEditing ? 'PUT' : 'POST';
 
-      const finalImages = (form.imageUrls || []).slice(0, MAX_PHOTOS);
-      const finalPrimary = finalImages[0] || form.imageUrl || '';
-
       const res = await fetch(url, {
         method,
         headers: {
@@ -619,8 +433,6 @@ function Parts() {
           availability: form.availability,
           condition,
           productType,
-          imageUrl: finalPrimary,
-          imageUrls: finalImages,
         }),
       });
 
@@ -669,43 +481,7 @@ function Parts() {
     }
   };
 
-  const handleOpenLightbox = (part, initialIndex = 0) => {
-    setPreviewPart(part);
-    setActivePhotoIndex(initialIndex);
-  };
-
-  // Keyboard navigation for lightbox
-  useEffect(() => {
-    if (!previewPart) return;
-
-    const gallery = (previewPart.imageUrls && previewPart.imageUrls.length > 0)
-      ? previewPart.imageUrls
-      : (previewPart.imageUrl ? [previewPart.imageUrl] : []);
-
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        setPreviewPart(null);
-      } else if (e.key === 'ArrowRight' && gallery.length > 1) {
-        setActivePhotoIndex((curr) => (curr + 1) % gallery.length);
-      } else if (e.key === 'ArrowLeft' && gallery.length > 1) {
-        setActivePhotoIndex((curr) => (curr - 1 + gallery.length) % gallery.length);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [previewPart]);
-
   const hasActiveFilters = Boolean(searchTerm.trim() || availabilityFilter !== 'all' || makeFilter !== 'all' || sortBy !== 'newest');
-
-  // Preview part gallery list
-  const previewGallery = useMemo(() => {
-    if (!previewPart) return [];
-    if (Array.isArray(previewPart.imageUrls) && previewPart.imageUrls.length > 0) {
-      return previewPart.imageUrls;
-    }
-    return previewPart.imageUrl ? [previewPart.imageUrl] : [];
-  }, [previewPart]);
 
   return (
     <div
@@ -985,8 +761,7 @@ function Parts() {
             <table className="w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-gray-800 bg-gray-800/50 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                  <th scope="col" className="py-3.5 pl-4 pr-2 w-16">Photo</th>
-                  <th scope="col" className="px-3 py-3.5">Part Description</th>
+                  <th scope="col" className="px-4 py-3.5">Part Description</th>
                   <th scope="col" className="px-3 py-3.5">Make</th>
                   <th scope="col" className="px-3 py-3.5">Model</th>
                   <th scope="col" className="px-3 py-3.5">Year</th>
@@ -1003,51 +778,13 @@ function Parts() {
                   const isInStock = (part.availability || 'in stock').toLowerCase() === 'in stock';
                   const isDeleting = deletingPartId === part._id;
 
-                  const partImages = Array.isArray(part.imageUrls) && part.imageUrls.length > 0
-                    ? part.imageUrls.filter(Boolean)
-                    : (part.imageUrl ? [part.imageUrl] : []);
-                  const primaryImageUrl = resolveImageUrl(partImages[0]);
-                  const photosCount = partImages.length;
-
                   return (
                     <tr
                       key={part._id || index}
                       className="group transition-colors hover:bg-gray-800/40"
                     >
-                      {/* Photo Thumbnail + Counter */}
-                      <td className="py-3 pl-4 pr-2">
-                        {primaryImageUrl ? (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenLightbox(part, 0)}
-                            className="group/photo relative block h-11 w-11 overflow-hidden rounded-xl border border-gray-700 bg-gray-800 shadow-sm transition hover:border-emerald-500 focus:outline-none"
-                            title="Click to view photo gallery"
-                          >
-                            <img
-                              src={primaryImageUrl}
-                              alt={part.part || 'Part photo'}
-                              className="h-full w-full object-cover transition duration-200 group-hover/photo:scale-110"
-                              loading="lazy"
-                            />
-                            {photosCount > 1 && (
-                              <span className="absolute bottom-0.5 right-0.5 flex items-center gap-0.5 rounded-md bg-black/75 px-1 py-0.2 text-[9px] font-bold text-white backdrop-blur-xs">
-                                <ImageIcon className="h-2.5 w-2.5" />
-                                {photosCount}
-                              </span>
-                            )}
-                          </button>
-                        ) : (
-                          <div
-                            className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-800 bg-gray-800/50 text-gray-500"
-                            title="No photo uploaded"
-                          >
-                            <Camera className="h-4 w-4" />
-                          </div>
-                        )}
-                      </td>
-
                       {/* Part Description / Title */}
-                      <td className="max-w-[260px] px-3 py-3.5">
+                      <td className="max-w-[260px] px-4 py-3.5">
                         <div className="font-semibold text-white truncate" title={part.title || part.part}>
                           {part.part || 'Unnamed Part'}
                         </div>
@@ -1213,16 +950,16 @@ function Parts() {
                   </h3>
                   <p className="text-xs text-gray-400">
                     {editingPart
-                      ? 'Update specifications, vehicle fitment, pricing, and up to 4 photos'
-                      : 'Fill in vehicle specs, part details, up to 4 photos, and price'}
+                      ? 'Update specifications, vehicle fitment, and pricing'
+                      : 'Fill in vehicle specs, part details, and price'}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={handleCloseModal}
-                disabled={saving || uploadingCount > 0}
-                className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-800 hover:text-white"
+                disabled={saving}
+                className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-800 hover:text-white disabled:opacity-50"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1230,140 +967,6 @@ function Parts() {
 
             {/* Modal Form */}
             <form onSubmit={handleFormSubmit} className="space-y-4 p-5">
-              {/* Part Photos Section (Up to 4 Photos) */}
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-semibold text-gray-300">
-                      Part Photos ({form.imageUrls?.length || 0}/{MAX_PHOTOS})
-                    </label>
-                    <span className="text-[11px] text-gray-500">(First photo is cover)</span>
-                  </div>
-                  {(form.imageUrls?.length || 0) < MAX_PHOTOS && (
-                    <button
-                      type="button"
-                      onClick={() => setShowUrlInput((v) => !v)}
-                      className="text-xs font-medium text-emerald-400 hover:underline"
-                    >
-                      {showUrlInput ? 'Upload file' : '+ Attach Image URL'}
-                    </button>
-                  )}
-                </div>
-
-                {/* Photo Gallery Grid (4 slots) */}
-                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                  {(form.imageUrls || []).map((imgUrl, idx) => (
-                    <div
-                      key={idx}
-                      className="group relative flex h-24 flex-col justify-between overflow-hidden rounded-xl border border-gray-700 bg-gray-900/90 p-1 transition hover:border-gray-600"
-                    >
-                      <img
-                        src={resolveImageUrl(imgUrl)}
-                        alt={`Photo ${idx + 1}`}
-                        className="h-full w-full rounded-lg object-cover"
-                      />
-
-                      {/* Cover Badge or Set as Cover */}
-                      <div className="absolute top-1.5 left-1.5">
-                        {idx === 0 ? (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600/90 px-1.5 py-0.5 text-[10px] font-bold text-white shadow backdrop-blur-xs">
-                            <Star className="h-2.5 w-2.5 fill-current" />
-                            Cover
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleSetPrimaryPhoto(idx)}
-                            title="Make this the cover photo"
-                            className="rounded-md bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold text-gray-300 opacity-0 shadow transition hover:bg-emerald-600 hover:text-white group-hover:opacity-100"
-                          >
-                            Set Cover
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Delete Button */}
-                      <button
-                        type="button"
-                        onClick={() => handleRemovePhoto(idx)}
-                        title="Remove photo"
-                        className="absolute top-1.5 right-1.5 rounded-lg bg-black/70 p-1 text-rose-300 opacity-0 shadow transition hover:bg-rose-600 hover:text-white group-hover:opacity-100"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
-
-                  {/* Add / Upload Photo Tile */}
-                  {(form.imageUrls?.length || 0) < MAX_PHOTOS && (
-                    <div
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setDragOver(true);
-                      }}
-                      onDragLeave={() => setDragOver(false)}
-                      onDrop={handleDrop}
-                      onClick={() => uploadingCount === 0 && fileInputRef.current?.click()}
-                      className={`flex h-24 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-2 text-center transition-all ${
-                        dragOver
-                          ? 'border-emerald-500 bg-emerald-500/10'
-                          : 'border-gray-700 bg-gray-900/40 hover:border-emerald-500/70 hover:bg-gray-900/80'
-                      }`}
-                    >
-                      {uploadingCount > 0 ? (
-                        <div className="flex flex-col items-center gap-1">
-                          <InlineLoader size="xs" />
-                          <span className="text-[10px] text-gray-400">Uploading...</span>
-                        </div>
-                      ) : (
-                        <>
-                          <ImagePlus className="h-5 w-5 text-gray-400 group-hover:text-emerald-400" />
-                          <span className="mt-1 text-[11px] font-semibold text-gray-300">
-                            + Add Photo
-                          </span>
-                          <span className="text-[9px] text-gray-500">
-                            {(form.imageUrls?.length || 0)}/{MAX_PHOTOS}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Optional URL Input */}
-                {showUrlInput && (form.imageUrls?.length || 0) < MAX_PHOTOS && (
-                  <div className="mt-2 flex gap-2">
-                    <div className="relative flex-1">
-                      <LinkIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      <input
-                        type="url"
-                        placeholder="https://example.com/part-photo.jpg"
-                        value={customImageUrl}
-                        onChange={(e) => setCustomImageUrl(e.target.value)}
-                        className="w-full rounded-xl border border-gray-700 bg-gray-900/90 py-2 pl-9 pr-3 text-xs text-white placeholder-gray-500 focus:border-emerald-500"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAddCustomImageUrl}
-                      className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500"
-                    >
-                      Attach
-                    </button>
-                  </div>
-                )}
-
-                {/* Hidden Multi-file input */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handleFileInputChange}
-                  className="hidden"
-                />
-              </div>
-
               {/* Sheet Catalog Fields */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
                 <div>
@@ -1549,14 +1152,14 @@ function Parts() {
                 <button
                   type="button"
                   onClick={handleCloseModal}
-                  disabled={saving || uploadingCount > 0}
+                  disabled={saving}
                   className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-xs font-semibold text-gray-300 transition hover:bg-gray-700 hover:text-white disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={saving || uploadingCount > 0}
+                  disabled={saving}
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#059669] to-emerald-600 px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:from-[#047857] hover:to-emerald-700 disabled:opacity-70"
                 >
                   {saving ? (
@@ -1567,123 +1170,6 @@ function Parts() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Interactive Multi-Photo Lightbox Gallery Modal */}
-      {previewPart && previewGallery.length > 0 && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md modal-backdrop"
-          onClick={() => setPreviewPart(null)}
-        >
-          <div
-            className="relative flex flex-col max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-3xl border border-gray-700 bg-[#161B28] shadow-2xl modal-panel select-none"
-            onClick={(e) => e.stopPropagation()}
-            onContextMenu={(e) => e.preventDefault()}
-          >
-            {/* Lightbox Header */}
-            <div className="flex items-center justify-between border-b border-gray-800 bg-[#1C2333]/90 px-5 py-3.5">
-              <div>
-                <h4 className="text-sm font-bold text-white">
-                  {[previewPart.year, previewPart.make, previewPart.model, previewPart.trim, '-', previewPart.part].filter(Boolean).join(' ')}
-                </h4>
-                <div className="mt-0.5 flex items-center gap-2 text-xs">
-                  <span className="font-mono font-semibold text-emerald-400">{formatPrice(previewPart.price, previewPart.currency)}</span>
-                  <span className="text-gray-500">-</span>
-                  <span className={previewPart.availability === 'out of stock' ? 'text-rose-400' : 'text-emerald-300'}>
-                    {previewPart.availability === 'out of stock' ? 'Out of Stock' : 'In Stock'}
-                  </span>
-                  <span className="text-gray-500">-</span>
-                  <span className="text-gray-400">Photo {activePhotoIndex + 1} of {previewGallery.length}</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPreviewPart(null)}
-                className="rounded-xl p-1.5 text-gray-400 transition hover:bg-gray-800 hover:text-white"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Lightbox Main Image View with Prev/Next Navigation */}
-            <div className="relative flex min-h-[300px] max-h-[58vh] items-center justify-center bg-black/70 p-4">
-              <img
-                src={resolveImageUrl(previewGallery[activePhotoIndex])}
-                alt={`${previewPart.part || ''} - Photo ${activePhotoIndex + 1}`}
-                className="max-h-[54vh] w-auto max-w-full rounded-xl object-contain shadow-lg"
-              />
-
-              {/* Prev Button */}
-              {previewGallery.length > 1 && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActivePhotoIndex((curr) => (curr - 1 + previewGallery.length) % previewGallery.length);
-                  }}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white shadow-lg backdrop-blur-sm transition hover:bg-emerald-600"
-                >
-                  <ChevronLeft className="h-6 w-6" />
-                </button>
-              )}
-
-              {/* Next Button */}
-              {previewGallery.length > 1 && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActivePhotoIndex((curr) => (curr + 1) % previewGallery.length);
-                  }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white shadow-lg backdrop-blur-sm transition hover:bg-emerald-600"
-                >
-                  <ChevronRight className="h-6 w-6" />
-                </button>
-              )}
-            </div>
-
-            {/* Thumbnail Strip (if multiple photos) */}
-            {previewGallery.length > 1 && (
-              <div className="flex items-center justify-center gap-2 border-t border-gray-800/80 bg-gray-900/90 py-2.5 px-4">
-                {previewGallery.map((url, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setActivePhotoIndex(idx)}
-                    className={`h-12 w-12 overflow-hidden rounded-lg border-2 transition-all ${
-                      activePhotoIndex === idx
-                        ? 'border-emerald-500 ring-2 ring-emerald-500/40 scale-105'
-                        : 'border-gray-700 opacity-60 hover:opacity-100'
-                    }`}
-                  >
-                    <img
-                      src={resolveImageUrl(url)}
-                      alt={`Thumbnail ${idx + 1}`}
-                      className="h-full w-full object-cover"
-                    />
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Lightbox Footer */}
-            <div className="flex items-center justify-between border-t border-gray-800 bg-[#1C2333]/90 px-5 py-3 text-xs text-gray-400">
-              <span>Added {formatDate(previewPart.createdAt)}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  const partToEdit = previewPart;
-                  setPreviewPart(null);
-                  handleOpenEditModal(partToEdit);
-                }}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                Edit Part & Photos
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -1764,7 +1250,7 @@ function Parts() {
               <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-3">
                 <span className="text-[11px] font-semibold text-gray-400">Required & Supported Columns:</span>
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {['Part', 'Make', 'Model', 'Year', 'Price', 'Availability', 'Trim', 'Condition', 'Image URL', 'ID / SKU'].map((col) => (
+                  {['Part', 'Make', 'Model', 'Year', 'Price', 'Availability', 'Trim', 'Condition', 'ID / SKU'].map((col) => (
                     <span
                       key={col}
                       className="rounded-md bg-gray-800 px-2 py-0.5 text-[10px] font-medium text-gray-300 border border-gray-700/60"

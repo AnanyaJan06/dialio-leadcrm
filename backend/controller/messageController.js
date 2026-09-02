@@ -315,10 +315,6 @@ const formatPartForAi = (part) => {
       : (part.price ? `${currency} ${part.price}` : 'Quote required'),
     availability: part.availability || 'in stock',
     condition: part.condition || '',
-    imageUrl: toPublicMediaUrl(part.imageUrl),
-    imageUrls: Array.isArray(part.imageUrls)
-      ? part.imageUrls.map(toPublicMediaUrl).filter(Boolean).slice(0, 4)
-      : [],
   };
 };
 
@@ -327,17 +323,7 @@ const hasPhotoRequest = (...values) => {
   return /\b(photo|photos|picture|pictures|pic|pics|image|images|img|show me|send.*(it|one|them))\b/.test(text);
 };
 
-const getSuggestedPartMediaUrls = ({ partAvailability, recentMessages, instruction }) => {
-  if (partAvailability.status !== 'available') return [];
-
-  const latestInbound = recentMessages.find((message) => message.direction === 'inbound')?.body || '';
-  if (!hasPhotoRequest(instruction, latestInbound)) return [];
-
-  return partAvailability.matches
-    .flatMap((part) => part.imageUrls?.length ? part.imageUrls : [part.imageUrl])
-    .filter(Boolean)
-    .slice(0, 4);
-};
+const getSuggestedPartMediaUrls = () => [];
 
 const buildRegexFilter = (field, value, exact = false) => {
   const trimmed = String(value || '').trim();

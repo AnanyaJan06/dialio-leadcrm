@@ -1,22 +1,4 @@
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import Part from '../model/Part.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const uploadsRoot = path.resolve(__dirname, '..', 'uploads');
-const partUploadsDir = path.join(uploadsRoot, 'parts');
-
-const allowedImageTypes = new Map([
-  ['image/jpeg', 'jpg'],
-  ['image/png', 'png'],
-  ['image/gif', 'gif'],
-  ['image/webp', 'webp'],
-  ['image/svg+xml', 'svg'],
-  ['image/avif', 'avif'],
-]);
-const maxImageBytes = 10 * 1024 * 1024; // 10MB
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const clean = (value) => String(value ?? '').trim();
@@ -42,10 +24,6 @@ const normalizePartPayload = (body, userId) => {
   const price = Number(body.price);
   const availability = normalizeAvailability(body.availability);
 
-  const images = Array.isArray(body.imageUrls)
-    ? body.imageUrls.map((u) => clean(u)).filter(Boolean).slice(0, 4)
-    : (clean(body.imageUrl) ? [clean(body.imageUrl)] : []);
-
   return {
     data: {
       externalId: clean(body.externalId ?? body.id),
@@ -60,8 +38,6 @@ const normalizePartPayload = (body, userId) => {
       availability,
       condition: clean(body.condition),
       productType: clean(body.productType ?? body.product_type),
-      imageUrl: images[0] || clean(body.imageUrl),
-      imageUrls: images,
       createdBy: userId || null,
     },
     partName,
@@ -94,41 +70,6 @@ const handleDuplicateKey = (error, res) => {
     return res.status(409).json({ message: 'A part with this sheet id already exists' });
   }
   return res.status(500).json({ message: error.message });
-};
-
-export const uploadPartImage = async (req, res) => {
-  try {
-    const contentType = String(req.headers['content-type'] || '').split(';')[0].toLowerCase();
-    const extension = allowedImageTypes.get(contentType);
-
-    if (!extension) {
-      return res.status(400).json({ message: 'Please upload a valid JPG, PNG, GIF, WebP, SVG, or AVIF image.' });
-    }
-
-    if (!req.body || !req.body.length) {
-      return res.status(400).json({ message: 'Image file data is required.' });
-    }
-
-    if (req.body.length > maxImageBytes) {
-      return res.status(400).json({ message: 'Image must be 10MB or smaller.' });
-    }
-
-    await fs.mkdir(partUploadsDir, { recursive: true });
-
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${extension}`;
-    const filePath = path.join(partUploadsDir, fileName);
-    await fs.writeFile(filePath, req.body);
-
-    const imageUrl = `/uploads/parts/${fileName}`;
-
-    res.status(201).json({
-      message: 'Image uploaded successfully',
-      imageUrl,
-    });
-  } catch (error) {
-    console.error('Upload Part Image Error:', error);
-    res.status(500).json({ message: error.message || 'Failed to upload image' });
-  }
 };
 
 export const createPart = async (req, res) => {
@@ -291,7 +232,6 @@ const HEADER_ALIASES = {
   availability: ['availability', 'status', 'instock', 'stockstatus', 'stock', 'available', 'inventory'],
   condition: ['condition', 'grade', 'mileage', 'state', 'quality', 'notes', 'descriptioncondition'],
   productType: ['producttype', 'product_type', 'type', 'category', 'itemtype'],
-  imageUrl: ['imageurl', 'image', 'photo', 'photourl', 'pic', 'picture', 'images', 'imageurls', 'photos', 'pictureurl', 'link'],
 };
 
 const normalizeGoogleSheetUrl = (rawUrl) => {
@@ -458,7 +398,6 @@ export const syncGoogleSheetParts = async (req, res) => {
       const availability = normalizeAvailability(getVal('availability'));
       const condition = getVal('condition');
       const productType = getVal('productType');
-      const rawImages = getVal('imageUrl');
 
       if (!make || !model || !year || !partName) {
         skippedCount++;
@@ -469,12 +408,6 @@ export const syncGoogleSheetParts = async (req, res) => {
       const cleanPrice = String(rawPrice).replace(/[^0-9.-]/g, '');
       const parsedPrice = parseFloat(cleanPrice);
       const price = Number.isFinite(parsedPrice) ? Math.max(0, parsedPrice) : 0;
-
-      // Parse images (separated by comma, semicolon, space, or pipe)
-      const imagesList = rawImages
-        ? rawImages.split(/[\s,;|]+/).map(clean).filter((url) => url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/'))
-        : [];
-      const primaryImage = imagesList[0] || '';
 
       const partData = {
         title: customTitle || buildPartTitle({ part: partName, year, make, model, trim }),
@@ -488,8 +421,6 @@ export const syncGoogleSheetParts = async (req, res) => {
         availability,
         condition,
         productType,
-        imageUrl: primaryImage,
-        imageUrls: imagesList.slice(0, 4),
       };
 
       if (externalId) {
