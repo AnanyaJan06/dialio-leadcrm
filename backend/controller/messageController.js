@@ -1148,6 +1148,12 @@ export const receiveMessage = async (req, res) => {
       messageSid
     });
 
+    const leadAssigneeId = lead?.assignedTo ? String(lead.assignedTo._id || lead.assignedTo) : null;
+    const recipientUserIds = [...new Set([
+      ...assignedUserIds,
+      ...(leadAssigneeId ? [leadAssigneeId] : [])
+    ])];
+
     const io = req.app.get('io');
     if (io) {
       io.emit('incoming-message', {
@@ -1157,7 +1163,7 @@ export const receiveMessage = async (req, res) => {
         mediaUrls,
         messageSid,
         lead: messageLog.lead,
-        assignedTo: assignedUserIds,
+        assignedTo: recipientUserIds,
         createdAt: messageLog.createdAt
       });
     }
