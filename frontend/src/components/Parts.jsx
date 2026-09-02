@@ -3,16 +3,11 @@ import {
   Boxes,
   Camera,
   Car,
-  Check,
   ChevronLeft,
   ChevronRight,
-  Copy,
-  DollarSign,
-  Download,
   FileSpreadsheet,
   Image as ImageIcon,
   ImagePlus,
-  Layers,
   Link as LinkIcon,
   PackageCheck,
   PackageX,
@@ -23,10 +18,7 @@ import {
   Star,
   Tag,
   Trash2,
-  UploadCloud,
-  Wrench,
-  X,
-  ZoomIn
+  X
 } from 'lucide-react';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
@@ -142,7 +134,6 @@ function Parts() {
   const [saving, setSaving] = useState(false);
   const [uploadingCount, setUploadingCount] = useState(0);
   const [deletingPartId, setDeletingPartId] = useState('');
-  const [copiedId, setCopiedId] = useState('');
 
   // Google Sheet Sync State
   const [syncingSheet, setSyncingSheet] = useState(false);
@@ -678,16 +669,6 @@ function Parts() {
     }
   };
 
-  const handleCopyPartInfo = (part) => {
-    const text = `${part.externalId ? `${part.externalId} | ` : ''}${part.year || ''} ${part.make || ''} ${part.model || ''} ${part.trim || ''} - ${part.part || ''} | ${formatPrice(part.price, part.currency)} (${part.availability || 'In Stock'})`.trim();
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text);
-      setCopiedId(part._id);
-      showSuccessToast('Part details copied to clipboard');
-      setTimeout(() => setCopiedId(''), 2000);
-    }
-  };
-
   const handleOpenLightbox = (part, initialIndex = 0) => {
     setPreviewPart(part);
     setActivePhotoIndex(initialIndex);
@@ -715,48 +696,6 @@ function Parts() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [previewPart]);
 
-  // Export to CSV
-  const handleExportCSV = () => {
-    if (parts.length === 0) {
-      showErrorToast('No parts to export');
-      return;
-    }
-
-    const headers = ['ID', 'Title', 'Part', 'Year', 'Make', 'Model', 'Trim', 'Price', 'Currency', 'Availability', 'Condition', 'Product Type', 'Photos Count', 'Image URLs', 'Date Added'];
-    const escapeCell = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
-
-    const rows = parts.map((p) => {
-      const images = Array.isArray(p.imageUrls) && p.imageUrls.length > 0 ? p.imageUrls : (p.imageUrl ? [p.imageUrl] : []);
-      return [
-        escapeCell(p.externalId),
-        escapeCell(p.title || p.part),
-        escapeCell(p.part),
-        escapeCell(p.year),
-        escapeCell(p.make),
-        escapeCell(p.model),
-        escapeCell(p.trim),
-        p.price ?? '',
-        escapeCell(p.currency || 'USD'),
-        escapeCell(p.availability || 'in stock'),
-        escapeCell(p.condition),
-        escapeCell(p.productType),
-        images.length,
-        escapeCell(images.join(' | ')),
-        escapeCell(p.createdAt ? new Date(p.createdAt).toISOString() : ''),
-      ];
-    });
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `parts-stock-inventory-${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showSuccessToast('Inventory CSV exported');
-  };
-
   const hasActiveFilters = Boolean(searchTerm.trim() || availabilityFilter !== 'all' || makeFilter !== 'all' || sortBy !== 'newest');
 
   // Preview part gallery list
@@ -769,7 +708,11 @@ function Parts() {
   }, [previewPart]);
 
   return (
-    <div className="w-full space-y-4">
+    <div
+      className="w-full space-y-4 select-none"
+      onCopy={(e) => e.preventDefault()}
+      onCut={(e) => e.preventDefault()}
+    >
       {/* Top Header Section */}
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
@@ -794,16 +737,6 @@ function Parts() {
           >
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-emerald-400' : ''}`} />
             <span className="hidden sm:inline">Refresh</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            title="Export filtered parts to CSV"
-            className="flex items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800/80 px-3 py-2 text-xs font-medium text-gray-300 transition hover:bg-gray-700 hover:text-white"
-          >
-            <Download className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Export CSV</span>
           </button>
 
           <button
@@ -1062,11 +995,13 @@ function Parts() {
                   <th scope="col" className="py-3.5 pl-3 pr-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/60 font-medium">
+              <tbody
+                className="divide-y divide-gray-800/60 font-medium select-none"
+                onContextMenu={(e) => e.preventDefault()}
+              >
                 {parts.map((part, index) => {
                   const isInStock = (part.availability || 'in stock').toLowerCase() === 'in stock';
                   const isDeleting = deletingPartId === part._id;
-                  const isCopied = copiedId === part._id;
 
                   const partImages = Array.isArray(part.imageUrls) && part.imageUrls.length > 0
                     ? part.imageUrls.filter(Boolean)
@@ -1168,20 +1103,6 @@ function Parts() {
                       {/* Actions */}
                       <td className="whitespace-nowrap py-3.5 pl-3 pr-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Copy Info Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleCopyPartInfo(part)}
-                            title="Copy part summary"
-                            className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-800 hover:text-white"
-                          >
-                            {isCopied ? (
-                              <Check className="h-4 w-4 text-emerald-400" />
-                            ) : (
-                              <Copy className="h-4 w-4" />
-                            )}
-                          </button>
-
                           {/* Edit Button */}
                           <button
                             type="button"
@@ -1657,8 +1578,9 @@ function Parts() {
           onClick={() => setPreviewPart(null)}
         >
           <div
-            className="relative flex flex-col max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-3xl border border-gray-700 bg-[#161B28] shadow-2xl modal-panel"
+            className="relative flex flex-col max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-3xl border border-gray-700 bg-[#161B28] shadow-2xl modal-panel select-none"
             onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
           >
             {/* Lightbox Header */}
             <div className="flex items-center justify-between border-b border-gray-800 bg-[#1C2333]/90 px-5 py-3.5">

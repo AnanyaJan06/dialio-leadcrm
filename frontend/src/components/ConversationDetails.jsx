@@ -46,7 +46,8 @@ const toTimelineMessage = (message) => ({
   body: message.body,
   mediaUrls: message.mediaUrls || [],
   date: message.createdAt || message.date,
-  userName: message.userName || message.user?.name || ''
+  userName: message.userName || (typeof message.user === 'object' ? message.user?.name : '') || message.assigneeName || (typeof message.assignedTo === 'object' ? message.assignedTo?.name : '') || '',
+  assigneeName: message.assigneeName || (typeof message.assignedTo === 'object' ? message.assignedTo?.name : '') || ''
 });
 
 function ConversationDetailsSkeleton() {
@@ -520,6 +521,11 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
                           )}
                           {allottedNumberLabel && <p className="mt-0.5">{allottedNumberLabel}</p>}
                           {handledByName && isCall && <p className="mt-0.5">{handledByName}</p>}
+                          {!isCall && (item.userName || item.assigneeName) && (
+                            <p className="mt-0.5 font-medium text-emerald-400">
+                              {item.userName || item.assigneeName}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>

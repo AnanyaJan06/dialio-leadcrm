@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, User } from 'lucide-react';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
 import { buildPagedUrl, PAGE_SIZE, parsePagedResponse } from '../utils/pagination.js';
@@ -11,6 +11,16 @@ import { BACKEND_URL } from '../config/api.js';
 const getUserId = (user) => String(user?.id || user?._id || '');
 const getLeadId = (lead) => String((lead && typeof lead === 'object' ? lead._id : lead) || '');
 const getUnreadSmsThreadsKey = (userId) => `unreadSmsThreads:${userId || 'unknown'}`;
+
+const getUserDisplayName = (message) => {
+  if (message.assigneeName) return message.assigneeName;
+  if (typeof message.assignedTo === 'object' && message.assignedTo?.name) return message.assignedTo.name;
+  if (message.userName) return message.userName;
+  if (typeof message.user === 'object' && message.user?.name) return message.user.name;
+  if (typeof message.assignedTo === 'object' && message.assignedTo?.email) return message.assignedTo.email;
+  if (typeof message.user === 'object' && message.user?.email) return message.user.email;
+  return '';
+};
 
 const messageStatusStyles = {
   delivered: 'bg-emerald-500/15 text-emerald-300',
@@ -98,8 +108,17 @@ function Messages({ selectedPhoneNumber = '', selectedLeadId = '', onRecipientUs
     const normalized = normalizeIncomingMessage(message);
     const phoneNumber = normalized.direction === 'outbound' ? normalized.to : normalized.from;
     const threadKey = normalizePhone(phoneNumber) || phoneNumber;
+    const existingThread = threads.find((thread) => {
+      const key = thread.threadKey || normalizePhone(thread.phoneNumber) || thread.phoneNumber;
+      return key === threadKey;
+    });
+
     const nextThread = {
+      ...existingThread,
       ...normalized,
+      userName: normalized.userName || normalized.user?.name || existingThread?.userName || '',
+      assigneeName: normalized.assigneeName || normalized.assignedTo?.name || existingThread?.assigneeName || '',
+      leadName: normalized.leadName || existingThread?.leadName || '',
       phoneNumber,
       threadKey
     };
@@ -489,11 +508,25 @@ function Messages({ selectedPhoneNumber = '', selectedLeadId = '', onRecipientUs
                             {getAllottedNumberLabel(message)}
                           </span>
                         )}
+                        {getUserDisplayName(message) && (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-medium text-emerald-300 border border-emerald-500/20" title={`Assignee: ${getUserDisplayName(message)}`}>
+                            <User className="h-3 w-3 shrink-0" />
+                            <span>{getUserDisplayName(message)}</span>
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <span className="shrink-0 text-xs text-gray-500">
-                      {formatDateTime(message.createdAt)}
-                    </span>
+                    <div className="shrink-0 text-right">
+                      <span className="text-xs text-gray-500">
+                        {formatDateTime(message.createdAt)}
+                      </span>
+                      {getUserDisplayName(message) && (
+                        <p className="mt-1 flex items-center justify-end gap-1 text-xs font-medium text-emerald-400" title={`Assignee: ${getUserDisplayName(message)}`}>
+                          <User className="h-3 w-3 shrink-0 opacity-75" />
+                          <span className="truncate max-w-[120px] sm:max-w-[160px]">{getUserDisplayName(message)}</span>
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </button>
               );

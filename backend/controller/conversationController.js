@@ -30,6 +30,9 @@ const formatCallItem = (log) => {
 
 const formatMessageItem = (message) => {
   const item = message.toObject ? message.toObject() : message;
+  const assignee = item.lead?.assignedTo || null;
+  const assigneeName = assignee?.name || assignee?.email || '';
+  const userName = item.userName || item.user?.name || item.user?.email || assigneeName || '';
 
   return {
     id: String(item._id || item.messageSid || ''),
@@ -43,7 +46,14 @@ const formatMessageItem = (message) => {
     body: item.body,
     mediaUrls: item.mediaUrls || [],
     date: item.createdAt,
-    userName: item.userName || item.user?.name || ''
+    userName,
+    assigneeName,
+    assignedTo: assignee ? {
+      _id: assignee._id,
+      name: assignee.name,
+      email: assignee.email,
+      role: assignee.role
+    } : null
   };
 };
 
@@ -133,9 +143,27 @@ export const getConversationTimeline = async (req, res) => {
       formattedCalls = consolidateAdminCallLogs(formattedCalls);
     }
 
+    let formattedMessages = messageRows.map((row) => row.payload);
+    if (formattedMessages.length > 0) {
+      const messageIds = formattedMessages.map((m) => m._id).filter(Boolean);
+      const populatedMessages = await MessageLog.find({ _id: { $in: messageIds } })
+        .populate('user', 'name email role')
+        .populate({
+          path: 'lead',
+          select: 'name email phone assignedTo disposition',
+          populate: { path: 'assignedTo', select: 'name email role' }
+        })
+        .lean();
+      const messageMap = new Map(populatedMessages.map((m) => [String(m._id), m]));
+      formattedMessages = formattedMessages.map((m) => {
+        const populated = messageMap.get(String(m._id));
+        return populated || m;
+      });
+    }
+
     const consolidatedCallItems = formattedCalls.map(formatCallItem);
-    const messageItems = messageRows
-      .map((row) => formatMessageItem(row.payload))
+    const messageItems = formattedMessages
+      .map(formatMessageItem)
       .filter((item) => item.id);
 
     const timelineDesc = [...consolidatedCallItems, ...messageItems]

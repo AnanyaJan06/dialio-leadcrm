@@ -774,7 +774,16 @@ export const sendMessage = async (req, res) => {
       messageSid: twilioMessage.sid
     });
 
-    res.status(201).json({ message: 'Message sent', messageLog });
+    const messageLogObj = messageLog.toObject();
+    messageLogObj.userName = req.user.name || '';
+    messageLogObj.user = {
+      _id: req.user.id,
+      name: req.user.name,
+      email: req.user.email,
+      role: req.user.role
+    };
+
+    res.status(201).json({ message: 'Message sent', messageLog: messageLogObj });
   } catch (error) {
     console.error('Send Message Error:', error);
     res.status(500).json({
@@ -830,9 +839,20 @@ export const updateMessageStatus = async (req, res) => {
 
 const formatMessage = (message) => {
   const item = message.toObject ? message.toObject() : message;
+  const assignee = item.lead?.assignedTo || null;
+  const assigneeName = assignee?.name || assignee?.email || '';
+  const userName = item.user?.name || item.user?.email || assigneeName || '';
+
   return {
     ...item,
-    userName: item.user?.name || ''
+    userName,
+    assigneeName,
+    assignedTo: assignee ? {
+      _id: assignee._id,
+      name: assignee.name,
+      email: assignee.email,
+      role: assignee.role
+    } : null
   };
 };
 
@@ -862,6 +882,11 @@ export const getMessages = async (req, res) => {
 
     const messages = await MessageLog.find(query)
       .populate('user', 'name email role')
+      .populate({
+        path: 'lead',
+        select: 'name email phone assignedTo disposition',
+        populate: { path: 'assignedTo', select: 'name email role' }
+      })
       .sort({ createdAt: -1, _id: -1 })
       .limit(limit + 1);
 
@@ -958,7 +983,10 @@ export const getMessageThreads = async (req, res) => {
         ...(directLeadIds.length > 0 ? [{ _id: { $in: directLeadIds } }] : []),
         ...(allPhonePatterns.length > 0 ? [{ phone: { $in: allPhonePatterns } }] : [])
       ]
-    }).select('_id name email phone disposition').lean();
+    })
+      .select('_id name email phone disposition assignedTo')
+      .populate('assignedTo', 'name email role')
+      .lean();
 
     const leadById = new Map(leads.map((l) => [String(l._id), l]));
     const leadByPhone = new Map();
@@ -972,14 +1000,26 @@ export const getMessageThreads = async (req, res) => {
       mergedThreads.map((thread) => {
         const rawMessage = thread.latestMessage;
         const user = rawMessage?.user ? userMap.get(String(rawMessage.user)) : null;
-        const formattedMsg = {
-          ...rawMessage,
-          userName: user?.name || ''
-        };
 
         const resolvedLead = (rawMessage?.lead && leadById.get(String(rawMessage.lead)))
           || leadByPhone.get(thread.canonicalPhone)
           || null;
+
+        const assignee = resolvedLead?.assignedTo || null;
+        const assigneeName = assignee?.name || assignee?.email || '';
+        const userName = user?.name || user?.email || assigneeName || '';
+
+        const formattedMsg = {
+          ...rawMessage,
+          userName,
+          assigneeName,
+          assignedTo: assignee ? {
+            _id: assignee._id,
+            name: assignee.name,
+            email: assignee.email,
+            role: assignee.role
+          } : null
+        };
 
         return {
           ...formattedMsg,
