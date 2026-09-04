@@ -25,10 +25,74 @@ const allowedImageTypes = new Map([
   ['image/webp', 'webp']
 ]);
 const maxImageBytes = 5 * 1024 * 1024;
+const defaultGreetingReply = 'Hello';
 const unknownNumberGreeting = 'Hello! How can I help you find the right parts for your vehicle today?';
 const autoReplyCooldownMs = Math.max(0, Number(process.env.AI_AUTO_REPLY_COOLDOWN_MS) || 120000);
 const autoReplyEnabled = String(process.env.AI_AUTO_REPLY_WHEN_AGENT_OFFLINE || 'true').toLowerCase() !== 'false';
 const optOutPattern = /\b(stop|unsubscribe|cancel|end|quit|do not contact|don't contact|do not text|don't text)\b/i;
+
+const getSimpleGreetingReply = (text = '') => {
+  const normalized = String(text || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) return null;
+
+  const fillerWords = new Set(['there', 'sir', 'mam', 'maam', 'madam', 'friend', 'team']);
+  const words = normalized.split(' ').filter(Boolean);
+  const coreWords = words.filter((word) => !fillerWords.has(word));
+
+  if (!coreWords.length || words.length > 5) return null;
+
+  const greetingWords = new Set([
+    'hi',
+    'hy',
+    'hai',
+    'hey',
+    'hello',
+    'helo',
+    'heloo',
+    'helloo',
+    'hlo',
+    'hii',
+    'hiii',
+    'hola',
+    'greetings',
+    'yo',
+  ]);
+  const timeGreetingWords = coreWords.filter((word) => !greetingWords.has(word));
+  const phraseWords = timeGreetingWords.length ? timeGreetingWords : coreWords;
+  const corePhrase = phraseWords.join(' ');
+  const compactPhrase = phraseWords.join('');
+  const phraseMatches = (phrases) => phrases.includes(corePhrase) || phrases.includes(compactPhrase);
+
+  if (phraseMatches(['good morning', 'gud morning', 'goodmorning', 'gdmorning', 'gm', 'morning'])) {
+    return 'Good morning';
+  }
+
+  if (phraseMatches(['good afternoon', 'goodafternoon', 'afternoon'])) {
+    return 'Good afternoon';
+  }
+
+  if (phraseMatches(['good evening', 'goodevening', 'evening', 'ge'])) {
+    return 'Good evening';
+  }
+
+  if (phraseMatches(['good night', 'goodnight', 'gn', 'night'])) {
+    return 'Good night';
+  }
+
+  if (phraseMatches(['whats up', 'what s up', 'wassup', 'sup'])) {
+    return 'Hello';
+  }
+
+  return coreWords.length <= 3 && coreWords.every((word) => greetingWords.has(word))
+    ? 'Hello'
+    : null;
+};
 
 const AUTO_PARTS_ASSISTANT_INSTRUCTIONS = `You are the official customer support AI assistant for an auto-parts business. You generate brief, concise, helpful, and customer-focused SMS replies for leads inquiring about vehicle parts.
 
@@ -604,6 +668,28 @@ const isUserOnline = async (io, userId) => {
   return sockets.some((socket) => String(socket.data.userId) === String(userId));
 };
 
+const sendSimpleGreetingReply = async ({ lead, from, to, userId, reply = defaultGreetingReply, senderType = 'ai' }) => {
+  const twilioMessage = await getTwilioClient().messages.create({
+    from: to,
+    to: from,
+    body: reply,
+    ...(getPublicBaseUrl() ? { statusCallback: `${getPublicBaseUrl()}/api/messages/status` } : {}),
+  });
+
+  await MessageLog.create({
+    ...(lead?._id ? { lead: lead._id } : {}),
+    ...(userId ? { user: userId } : {}),
+    phoneNumber: from,
+    from: to,
+    to: from,
+    body: reply,
+    direction: 'outbound',
+    senderType,
+    status: twilioMessage.status,
+    messageSid: twilioMessage.sid,
+  });
+};
+
 const sendOfflineAgentAiReply = async ({ io, lead, from, to, inboundMessage, fallbackUserId }) => {
   if (!autoReplyEnabled
     || !String(inboundMessage.body || '').trim()
@@ -1158,56 +1244,57 @@ export const receiveMessage = async (req, res) => {
     try {
       const detectedTopics = detectInquiryTopics(body);
       const hasInquiry = detectedTopics.length > 0;
+      const simpleGreetingReply = getSimpleGreetingReply(body);
 
-      // Update lead disposition to 'Ordered' if customer is placing/confirming an order
-      if (linkedLeadId && detectedTopics.includes('order') && lead?.disposition !== 'Ordered') {
-        try {
-          await Lead.findByIdAndUpdate(linkedLeadId, { disposition: 'Ordered' });
-          if (io) {
-            io.emit('lead-updated', {
-              leadId: String(linkedLeadId),
-              disposition: 'Ordered',
-            });
-          }
-        } catch (leadUpdateErr) {
-          console.warn('Failed to update lead disposition to Ordered:', leadUpdateErr.message);
-        }
-      }
-
-      if (lead || hasInquiry) {
-        await sendOfflineAgentAiReply({
-          io,
+      if (simpleGreetingReply) {
+        await sendSimpleGreetingReply({
           lead,
           from,
           to,
-          inboundMessage: messageLog,
-          fallbackUserId: assignedUserIds[0] || undefined,
+          userId: fallbackUserId,
+          reply: simpleGreetingReply,
         });
-      } else if (!linkedLeadId) {
-        const greetingAlreadySent = await MessageLog.exists({
-          phoneNumber: from,
-          direction: 'outbound',
-          body: unknownNumberGreeting,
-        });
+      } else {
+        // Update lead disposition to 'Ordered' if customer is placing/confirming an order
+        if (linkedLeadId && detectedTopics.includes('order') && lead?.disposition !== 'Ordered') {
+          try {
+            await Lead.findByIdAndUpdate(linkedLeadId, { disposition: 'Ordered' });
+            if (io) {
+              io.emit('lead-updated', {
+                leadId: String(linkedLeadId),
+                disposition: 'Ordered',
+              });
+            }
+          } catch (leadUpdateErr) {
+            console.warn('Failed to update lead disposition to Ordered:', leadUpdateErr.message);
+          }
+        }
 
-        if (!greetingAlreadySent) {
-          const twilioMessage = await getTwilioClient().messages.create({
-            from: to,
-            to: from,
-            body: unknownNumberGreeting,
+        if (lead || hasInquiry) {
+          await sendOfflineAgentAiReply({
+            io,
+            lead,
+            from,
+            to,
+            inboundMessage: messageLog,
+            fallbackUserId: assignedUserIds[0] || undefined,
           });
-
-          await MessageLog.create({
-            user: assignedUserIds[0] || undefined,
+        } else if (!linkedLeadId) {
+          const greetingAlreadySent = await MessageLog.exists({
             phoneNumber: from,
-            from: to,
-            to: from,
-            body: unknownNumberGreeting,
             direction: 'outbound',
-            senderType: 'system',
-            status: twilioMessage.status,
-            messageSid: twilioMessage.sid,
+            body: unknownNumberGreeting,
           });
+
+          if (!greetingAlreadySent) {
+            await sendSimpleGreetingReply({
+              from,
+              to,
+              userId: assignedUserIds[0] || undefined,
+              reply: unknownNumberGreeting,
+              senderType: 'system',
+            });
+          }
         }
       }
     } catch (aiError) {
