@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Phone, Sparkles } from 'lucide-react';
+import { Bot, Phone, Sparkles, User } from 'lucide-react';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
 import { buildPagedUrl, PAGE_SIZE, parsePagedResponse } from '../utils/pagination.js';
@@ -38,6 +38,7 @@ const toTimelineMessage = (message) => ({
   id: String(message._id || message.messageSid || message.id || ''),
   type: 'sms',
   direction: message.direction,
+  senderType: message.senderType || (message.direction === 'outbound' ? (message.userName ? 'human' : 'ai') : 'customer'),
   status: message.status,
   errorCode: message.errorCode,
   deliveredAt: message.deliveredAt,
@@ -461,6 +462,8 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
               {items.map((item) => {
                 const isOutbound = item.direction === 'outbound';
                 const isCall = item.type === 'call';
+                const isAiMessage = !isCall && isOutbound && (item.senderType === 'ai' || (!item.userName && !item.assigneeName));
+                const isUserMessage = !isCall && isOutbound && !isAiMessage;
                 const allottedNumberLabel = getAllottedNumberLabel(item);
                 const handledByName = item.handledByName || item.answeredByName || item.userName || '';
                 const callStatusLabel = item.status === 'answered-by-teammate' && handledByName
@@ -474,12 +477,14 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
                     key={`${item.type}-${item.id}`}
                     className={`flex ${isOutbound ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`max-w-[74%] rounded-2xl px-4 py-3 shadow-lg ${
+                    <div className={`max-w-[76%] rounded-2xl px-4 py-3 shadow-lg ${
                       isCall
                         ? 'conversation-call-bubble bg-[#1C2333] text-white'
-                        : isOutbound
-                          ? 'conversation-sms-outbound bg-[#1E293B] text-white'
-                          : 'conversation-sms-inbound bg-[#4B5563] text-white'
+                        : isAiMessage
+                          ? 'conversation-sms-ai bg-[#1A1829] border border-purple-500/30 text-white shadow-purple-950/20'
+                          : isUserMessage
+                            ? 'conversation-sms-outbound bg-[#1E293B] border border-blue-500/20 text-white shadow-blue-950/20'
+                            : 'conversation-sms-inbound bg-[#374151] text-white'
                     }`}>
                       {isCall ? (
                         <>
@@ -495,6 +500,26 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
                         </>
                       ) : (
                         <>
+                          {/* Sender Identification Badge */}
+                          <div className="mb-2 flex items-center justify-between gap-2 border-b border-white/10 pb-1.5">
+                            {isAiMessage ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-md bg-purple-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-purple-300 border border-purple-500/30">
+                                <Bot className="h-3 w-3 text-purple-400" />
+                                <span>AI Assistant</span>
+                              </span>
+                            ) : isUserMessage ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-300 border border-blue-500/30">
+                                <User className="h-3 w-3 text-blue-400" />
+                                <span>User: {item.userName || item.assigneeName || 'Representative'}</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-gray-700/80 px-2 py-0.5 text-[10px] font-semibold text-gray-300 border border-gray-600/30">
+                                Customer
+                              </span>
+                            )}
+                            <span className="text-[10px] font-mono text-gray-400">{formatTime(item.date)}</span>
+                          </div>
+
                           {item.mediaUrls?.length > 0 && (
                             <div className="mb-2 space-y-2">
                               {item.mediaUrls.map((url) => (
@@ -511,21 +536,16 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
                         </>
                       )}
 
-                      <div className="mt-3 flex items-center justify-between gap-4 text-[11px] text-gray-400">
-                        <span>{formatTime(item.date)}</span>
+                      <div className="mt-2.5 flex items-center justify-between gap-3 text-[11px] text-gray-400">
+                        {isCall ? <span>{formatTime(item.date)}</span> : <span />}
                         <div className="text-right">
                           {!isCall && (
-                            <span className={`capitalize ${messageStatusStyles[item.status] || 'text-gray-300'}`}>
+                            <span className={`capitalize text-[10px] font-medium ${messageStatusStyles[item.status] || 'text-gray-300'}`}>
                               {formatMessageStatus(item.status)}
                             </span>
                           )}
-                          {allottedNumberLabel && <p className="mt-0.5">{allottedNumberLabel}</p>}
+                          {allottedNumberLabel && <p className="mt-0.5 text-[10px] text-gray-400">{allottedNumberLabel}</p>}
                           {handledByName && isCall && <p className="mt-0.5">{handledByName}</p>}
-                          {!isCall && (item.userName || item.assigneeName) && (
-                            <p className="mt-0.5 font-medium text-emerald-400">
-                              {item.userName || item.assigneeName}
-                            </p>
-                          )}
                         </div>
                       </div>
                     </div>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Sparkles, User } from 'lucide-react';
+import { Bot, Sparkles, User } from 'lucide-react';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
 import { buildPagedUrl, PAGE_SIZE, parsePagedResponse } from '../utils/pagination.js';
@@ -487,27 +487,43 @@ function Messages({ selectedPhoneNumber = '', selectedLeadId = '', onRecipientUs
                       <p className={`mt-1 line-clamp-1 text-xs ${
                         isUnread ? 'font-semibold text-gray-200' : 'text-gray-400'
                       }`}>
-                        {message.direction === 'outbound' ? 'You: ' : ''}
+                        {message.direction === 'outbound' ? (message.senderType === 'ai' ? 'AI: ' : 'You: ') : ''}
                         {lastMessage}
                       </p>
 
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         {message.direction === 'outbound' ? (
+                          message.senderType === 'ai' ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 text-[11px] font-semibold text-purple-300">
+                              <Bot className="h-3 w-3 shrink-0 text-purple-400" />
+                              <span>AI Message</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 text-[11px] font-semibold text-blue-300">
+                              <User className="h-3 w-3 shrink-0 text-blue-400" />
+                              <span>User Message</span>
+                            </span>
+                          )
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2 py-0.5 text-[11px] font-semibold text-gray-300">
+                            Received
+                          </span>
+                        )}
+
+                        {message.direction === 'outbound' && (
                           <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize ${
                             messageStatusStyles[message.status] || messageStatusStyles.queued
                           }`}>
                             {formatMessageStatus(message.status)}
                           </span>
-                        ) : (
-                          <span className="inline-flex rounded-full bg-gray-700 px-2 py-0.5 text-[11px] font-semibold text-gray-300">
-                            Received
-                          </span>
                         )}
+
                         {getAllottedNumberLabel(message) && (
                           <span className="truncate text-xs text-gray-500">
                             {getAllottedNumberLabel(message)}
                           </span>
                         )}
+
                         {getUserDisplayName(message) && (
                           <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-medium text-emerald-300 border border-emerald-500/20" title={`Assignee: ${getUserDisplayName(message)}`}>
                             <User className="h-3 w-3 shrink-0" />

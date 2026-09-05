@@ -38,6 +38,7 @@ const formatMessageItem = (message) => {
     id: String(item._id || item.messageSid || ''),
     type: 'sms',
     direction: item.direction,
+    senderType: item.senderType || (item.user ? 'human' : 'system'),
     status: item.status,
     errorCode: item.errorCode,
     deliveredAt: item.deliveredAt,

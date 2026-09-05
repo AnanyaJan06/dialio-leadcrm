@@ -953,6 +953,7 @@ const formatMessage = (message) => {
     ...item,
     userName,
     assigneeName,
+    senderType: item.senderType || (item.user ? 'human' : 'system'),
     assignedTo: assignee ? {
       _id: assignee._id,
       name: assignee.name,
