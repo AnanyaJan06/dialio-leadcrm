@@ -398,10 +398,11 @@ const formatRecentMessagesForAi = (messages) => messages
   }));
 
 const formatPartForAi = (part) => {
-  const partName = part.part || '';
+  const partName = part.part || part.title || '';
   const currency = part.currency || 'USD';
 
   return {
+    title: part.title || '',
     make: part.make || '',
     model: part.model || '',
     year: part.year || '',

@@ -13,22 +13,22 @@ const partSchema = new mongoose.Schema(
     },
     part: {
       type: String,
-      required: true,
+      default: '',
       trim: true,
     },
     make: {
       type: String,
-      required: true,
+      default: '',
       trim: true,
     },
     model: {
       type: String,
-      required: true,
+      default: '',
       trim: true,
     },
     year: {
       type: String,
-      required: true,
+      default: '',
       trim: true,
     },
     trim: {
@@ -73,6 +73,7 @@ const partSchema = new mongoose.Schema(
 );
 
 partSchema.index({ externalId: 1 }, { unique: true, sparse: true });
+partSchema.index({ title: 1 });
 partSchema.index({ make: 1, model: 1, year: 1, part: 1, trim: 1 });
 partSchema.index({ title: 'text', make: 'text', model: 'text', part: 'text', trim: 'text' });
 
