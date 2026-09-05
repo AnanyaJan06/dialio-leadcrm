@@ -133,7 +133,7 @@ const AUTO_PARTS_ASSISTANT_INSTRUCTIONS = `You are the official customer support
 Core Guidelines:
 1. Brevity & Tone: Keep replies brief, natural, customer-focused, and friendly (typically 1 to 3 short sentences, under 300 characters). Avoid robotic fluff. Do not use emojis.
 2. Short Keywords, Slash Commands & Typos: Customers frequently text short inquiries, single words, shorthand, slash commands, or typos. You MUST recognize them immediately and provide direct answers:
-   - Price inquiries (e.g., "price?", "price please", "/price", "price", "cost?", "how much?", "prce", "quote"): Quote the exact USD price from the catalog match (e.g., "$450"). If price is not yet in catalog or vehicle details are missing, state our team is checking full inventory for the best quote and ask for vehicle year/make/model or VIN.
+   - Price-only inquiries (e.g., "price?", "price please", "/price", "price", "cost?", "how much?", "prce", "quote"): If a catalog price is available, reply with only the exact USD price (e.g., "$450") and no other words or punctuation. If price is not yet in catalog or vehicle details are missing, state our team is checking full inventory for the best quote and ask for vehicle year/make/model or VIN.
    - Warranty inquiries (e.g., "warranty?", "warrany?" [typo], "waranty?", "warranty", "warranty please", "/warranty", "guarantee"): Confirm that tested OEM parts come with standard replacement warranty coverage (tested replacement warranty included, typically 30-90 days).
    - Mileage inquiries (e.g., "mileage?", "mileage", "mileage please", "/mileage", "milage?" [typo], "miles?", "how many miles?"): Confirm that engines, transmissions, and mechanical parts are quality-tested OEM units with verified low mileage (inspected and tested before shipment).
    - Shipping inquiries (e.g., "shipping?", "delivery?", "how long?", "/shipping"): State that standard shipping takes approximately 7-14 business days (7-14 days) with tracking provided and nationwide delivery.
@@ -226,6 +226,11 @@ export const generateDirectAnswer = ({ lead, detectedTopics, partAvailability })
 
   const hasPrice = inStockMatch && typeof inStockMatch.price === 'number' && inStockMatch.price > 0;
   const priceValue = hasPrice ? (inStockMatch.priceFormatted || `$${inStockMatch.price}`) : null;
+  const isPriceOnlyInquiry = detectedTopics.length === 1 && detectedTopics.includes('price');
+
+  if (isPriceOnlyInquiry && priceValue) {
+    return priceValue;
+  }
 
   const parts = [];
 
@@ -397,6 +402,17 @@ const formatRecentMessagesForAi = (messages) => messages
     at: message.createdAt,
   }));
 
+const formatPriceForSms = (price, currency = 'USD') => {
+  if (typeof price !== 'number') return price ? `${currency} ${price}` : 'Quote required';
+
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: Number.isInteger(price) ? 0 : 2,
+    maximumFractionDigits: Number.isInteger(price) ? 0 : 2,
+  }).format(price);
+};
+
 const formatPartForAi = (part) => {
   const partName = part.part || part.title || '';
   const currency = part.currency || 'USD';
@@ -409,9 +425,7 @@ const formatPartForAi = (part) => {
     trim: part.trim || '',
     part: partName,
     price: part.price,
-    priceFormatted: typeof part.price === 'number'
-      ? new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(part.price)
-      : (part.price ? `${currency} ${part.price}` : 'Quote required'),
+    priceFormatted: formatPriceForSms(part.price, currency),
     availability: part.availability || 'in stock',
     condition: part.condition || '',
   };
@@ -600,6 +614,23 @@ const generateAiReply = async ({ lead, recentMessages = [], instruction = 'reply
   const detectedTopics = detectInquiryTopics(textToAnalyze || latestInbound || instruction);
 
   const partAvailability = await findAvailablePartsForLead(lead, recentMessages);
+  const directReply = generateDirectAnswer({ lead, detectedTopics, partAvailability });
+  const isDirectPriceOnlyReply = detectedTopics.length === 1
+    && detectedTopics.includes('price')
+    && directReply
+    && /^\$\d[\d,]*(?:\.\d{2})?$/.test(directReply);
+
+  if (isDirectPriceOnlyReply) {
+    return {
+      draft: directReply,
+      intent: 'answer_question',
+      safeToAutoSend: true,
+      reason: 'Direct price-only answer',
+      partAvailability,
+      suggestedMediaUrls: [],
+    };
+  }
+
   const suggestedMediaUrls = automatic
     ? []
     : getSuggestedPartMediaUrls({
@@ -622,7 +653,7 @@ const generateAiReply = async ({ lead, recentMessages = [], instruction = 'reply
       'Keep replies brief, concise, and customer-focused (under 300 characters, typically 1-3 short sentences).',
       'Sound natural, polite, and helpful.',
       'Recognize shorthand, single words, slash commands (/price, /warranty, /mileage), and typos (warrany, waranty, milage, prce) as direct customer questions asking for those details.',
-      'Price: If the customer asks about price or cost (e.g., "price?", "price please", "/price", "how much"), provide the exact price from partAvailability if available (e.g., "$450"). If not in catalog, state that our team is checking full inventory for the best quote.',
+      'Price-only questions: If the customer only asks about price or cost (e.g., "price?", "price please", "/price", "how much"), provide only the exact price from partAvailability if available (e.g., "$450"). No other words.',
       'Warranty: If the customer asks about warranty (e.g., "warranty?", "warrany?", "warranty please", "/warranty"), confirm that tested OEM parts include standard replacement warranty coverage (typically 30-90 days).',
       'Mileage: If the customer asks about mileage (e.g., "mileage?", "mileage", "milage?", "/mileage", "how many miles"), confirm that parts are quality-tested OEM units with verified low mileage (inspected before delivery).',
       'Shipping: If the customer asks about shipping, delivery time, or ETA, state that shipping takes approximately 7-14 days with tracking provided.',
