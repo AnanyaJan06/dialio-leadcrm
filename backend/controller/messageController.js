@@ -31,6 +31,28 @@ const autoReplyCooldownMs = Math.max(0, Number(process.env.AI_AUTO_REPLY_COOLDOW
 const autoReplyEnabled = String(process.env.AI_AUTO_REPLY_WHEN_AGENT_OFFLINE || 'true').toLowerCase() !== 'false';
 const optOutPattern = /\b(stop|unsubscribe|cancel|end|quit|do not contact|don't contact|do not text|don't text)\b/i;
 
+const getEditDistance = (left = '', right = '') => {
+  const a = String(left || '');
+  const b = String(right || '');
+  const rows = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+
+  for (let i = 0; i <= a.length; i += 1) rows[i][0] = i;
+  for (let j = 0; j <= b.length; j += 1) rows[0][j] = j;
+
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      rows[i][j] = Math.min(
+        rows[i - 1][j] + 1,
+        rows[i][j - 1] + 1,
+        rows[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return rows[a.length][b.length];
+};
+
 const getSimpleGreetingReply = (text = '') => {
   const normalized = String(text || '')
     .trim()
@@ -67,21 +89,33 @@ const getSimpleGreetingReply = (text = '') => {
   const phraseWords = timeGreetingWords.length ? timeGreetingWords : coreWords;
   const corePhrase = phraseWords.join(' ');
   const compactPhrase = phraseWords.join('');
-  const phraseMatches = (phrases) => phrases.includes(corePhrase) || phrases.includes(compactPhrase);
+  const phraseMatches = (phrases) => phrases.some((phrase) => {
+    const phraseValue = String(phrase || '').replace(/\s+/g, '');
+    if (phrase === corePhrase || phraseValue === compactPhrase) return true;
 
-  if (phraseMatches(['good morning', 'gud morning', 'goodmorning', 'gdmorning', 'gm', 'morning'])) {
+    const maxDistance = phraseValue.length <= 4 ? 1 : 2;
+    const isCloseTypo = Math.abs(phraseValue.length - compactPhrase.length) <= maxDistance
+      && getEditDistance(compactPhrase, phraseValue) <= maxDistance;
+    const isMissingEnding = compactPhrase.length >= 6
+      && phraseValue.startsWith(compactPhrase)
+      && phraseValue.length - compactPhrase.length <= 4;
+
+    return isCloseTypo || isMissingEnding;
+  });
+
+  if (phraseMatches(['good morning', 'gud morning', 'goodmorning', 'gudmorning', 'gdmorning', 'goodmorn', 'gudmorn', 'gm', 'mrng', 'morn', 'morning'])) {
     return 'Good morning';
   }
 
-  if (phraseMatches(['good afternoon', 'goodafternoon', 'afternoon'])) {
+  if (phraseMatches(['good afternoon', 'gud afternoon', 'goodafternoon', 'gudafternoon', 'ga', 'afternoon'])) {
     return 'Good afternoon';
   }
 
-  if (phraseMatches(['good evening', 'goodevening', 'evening', 'ge'])) {
+  if (phraseMatches(['good evening', 'gud evening', 'goodevening', 'gudevening', 'ge', 'evening'])) {
     return 'Good evening';
   }
 
-  if (phraseMatches(['good night', 'goodnight', 'gn', 'night'])) {
+  if (phraseMatches(['good night', 'gud night', 'goodnight', 'gudnight', 'gn', 'night'])) {
     return 'Good night';
   }
 
