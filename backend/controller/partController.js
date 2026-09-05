@@ -20,7 +20,7 @@ const normalizePartPayload = (body, userId) => {
   const model = clean(body.model);
   const year = clean(body.year);
   const trim = clean(body.trim);
-  const title = clean(body.title) || buildPartTitle({ part: partName, year, make, model, trim });
+  const title = clean(body.title) || buildPartTitle({ part: partName, year, make, model, trim }) || partName;
   const price = Number(body.price);
   const availability = normalizeAvailability(body.availability);
 
@@ -40,6 +40,7 @@ const normalizePartPayload = (body, userId) => {
       productType: clean(body.productType ?? body.product_type),
       createdBy: userId || null,
     },
+    title,
     partName,
     make,
     model,
@@ -49,9 +50,9 @@ const normalizePartPayload = (body, userId) => {
   };
 };
 
-const validatePartPayload = ({ partName, make, model, year, price, availability }) => {
-  if (!make || !model || !year || !partName) {
-    return 'Make, model, year, and part are required';
+const validatePartPayload = ({ title, partName, price, availability }) => {
+  if (!clean(title) && !clean(partName)) {
+    return 'Title or part description is required';
   }
 
   if (!Number.isFinite(price) || price < 0) {
@@ -131,6 +132,8 @@ export const getParts = async (req, res) => {
     else if (sort === 'price-desc') sortObj = { price: -1, _id: -1 };
     else if (sort === 'year-desc') sortObj = { year: -1, make: 1, model: 1, _id: -1 };
     else if (sort === 'make-asc') sortObj = { make: 1, model: 1, _id: -1 };
+    else if (sort === 'title-asc') sortObj = { title: 1, _id: -1 };
+    else if (sort === 'title-desc') sortObj = { title: -1, _id: -1 };
 
     const [
       parts,
@@ -221,8 +224,8 @@ export const deletePart = async (req, res) => {
 
 const HEADER_ALIASES = {
   externalId: ['id', 'externalid', 'sheetid', 'sku', 'partnumber', 'partnum', 'partno', 'partcode', 'stocknumber', 'stockno', 'stocknum', 'itemnumber', 'itemno', 'code', 'productid', 'vin'],
-  title: ['title', 'parttitle', 'producttitle', 'fulltitle', 'itemtitle', 'listingtitle'],
-  part: ['part', 'partname', 'partrequested', 'item', 'itemname', 'partdescription', 'productname', 'component'],
+  title: ['title', 'parttitle', 'producttitle', 'fulltitle', 'itemtitle', 'listingtitle', 'description', 'partdescription', 'itemdescription', 'details'],
+  part: ['part', 'partname', 'partrequested', 'item', 'itemname', 'productname', 'component'],
   make: ['make', 'carmake', 'vehiclemake', 'brand', 'manufacturer', 'auto'],
   model: ['model', 'carmodel', 'vehiclemodel'],
   year: ['year', 'caryear', 'vehicleyear', 'yr'],
@@ -369,9 +372,9 @@ export const syncGoogleSheetParts = async (req, res) => {
     const headerRow = rows[0];
     const mapping = mapHeaders(headerRow);
 
-    if (mapping.part === undefined || mapping.make === undefined || mapping.model === undefined || mapping.year === undefined) {
+    if (mapping.title === undefined && mapping.part === undefined && mapping.make === undefined) {
       return res.status(400).json({
-        message: 'Google Sheet must contain columns for Part, Make, Model, and Year.',
+        message: 'Google Sheet must contain a Title/Description column or Part/Make column.',
         detectedHeaders: headerRow,
       });
     }
@@ -399,7 +402,9 @@ export const syncGoogleSheetParts = async (req, res) => {
       const condition = getVal('condition');
       const productType = getVal('productType');
 
-      if (!make || !model || !year || !partName) {
+      const title = customTitle || buildPartTitle({ part: partName, year, make, model, trim }) || partName;
+
+      if (!title && !partName && !make) {
         skippedCount++;
         continue;
       }
@@ -410,7 +415,7 @@ export const syncGoogleSheetParts = async (req, res) => {
       const price = Number.isFinite(parsedPrice) ? Math.max(0, parsedPrice) : 0;
 
       const partData = {
-        title: customTitle || buildPartTitle({ part: partName, year, make, model, trim }),
+        title,
         part: partName,
         make,
         model,
@@ -432,6 +437,19 @@ export const syncGoogleSheetParts = async (req, res) => {
                 ...partData,
                 externalId,
               },
+              $setOnInsert: {
+                createdBy: req.user?.id || null,
+              },
+            },
+            upsert: true,
+          },
+        });
+      } else if (title) {
+        operations.push({
+          updateOne: {
+            filter: { title },
+            update: {
+              $set: partData,
               $setOnInsert: {
                 createdBy: req.user?.id || null,
               },

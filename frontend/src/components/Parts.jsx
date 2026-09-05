@@ -87,13 +87,12 @@ function PartsTableSkeleton() {
           </div>
           <div className="divide-y divide-gray-800/60 p-2">
             {Array.from({ length: 7 }).map((_, idx) => (
-              <div key={idx} className="flex items-center justify-between gap-4 py-3.5 px-2">
-                <Skeleton width={44} height={44} borderRadius={10} />
-                <Skeleton width={130} height={16} />
-                <Skeleton width={85} height={16} />
-                <Skeleton width={75} height={16} />
-                <Skeleton width={45} height={16} />
-                <Skeleton width={70} height={16} />
+              <div key={idx} className="flex items-center justify-between gap-4 py-3.5 px-3">
+                <div className="space-y-1.5 flex-1">
+                  <Skeleton width="60%" height={18} />
+                  <Skeleton width="30%" height={12} />
+                </div>
+                <Skeleton width={80} height={16} />
                 <Skeleton width={85} height={22} borderRadius={999} />
                 <Skeleton width={60} height={28} borderRadius={8} />
               </div>
@@ -349,9 +348,10 @@ function Parts() {
   // Open Modal for Edit
   const handleOpenEditModal = (part) => {
     setEditingPart(part);
+    const existingTitle = part.title || [part.year, part.make, part.model, part.trim, part.part].filter(Boolean).join(' ') || part.part || '';
     setForm({
       externalId: part.externalId || '',
-      title: part.title || '',
+      title: existingTitle,
       part: part.part || '',
       make: part.make || '',
       model: part.model || '',
@@ -396,8 +396,8 @@ function Parts() {
     const condition = form.condition.trim();
     const productType = form.productType.trim();
 
-    if (!make || !model || !year || !partName) {
-      showErrorToast('Make, model, year, and part are required');
+    if (!title && !partName) {
+      showErrorToast('Title or description is required');
       return;
     }
 
@@ -451,7 +451,7 @@ function Parts() {
   };
 
   const handleDelete = async (part) => {
-    const partSummary = `${part.year || ''} ${part.make || ''} ${part.model || ''} ${part.trim || ''} - ${part.part || 'Part'}`.trim();
+    const partSummary = part.title || `${part.year || ''} ${part.make || ''} ${part.model || ''} ${part.trim || ''} - ${part.part || 'Part'}`.trim() || 'this part';
     const confirmed = await confirmAction({
       title: 'Delete part from stock?',
       text: `Are you sure you want to remove "${partSummary}" from stock?`,
@@ -588,17 +588,21 @@ function Parts() {
           </p>
         </div>
 
-        {/* Available Makes / Brands */}
+        {/* Available Makes / In-Stock Rate */}
         <div className="rounded-2xl border border-cyan-500/20 bg-[#11151F] p-3.5 shadow-sm">
           <div className="flex items-center justify-between text-cyan-400">
-            <span className="text-xs font-medium uppercase tracking-wider">Vehicle Makes</span>
+            <span className="text-xs font-medium uppercase tracking-wider">
+              {availableMakes.length > 0 ? 'Vehicle Makes' : 'Stock Availability'}
+            </span>
             <div className="rounded-lg bg-cyan-500/10 p-1.5 text-cyan-400 ring-1 ring-cyan-500/20">
               <Car className="h-3.5 w-3.5" />
             </div>
           </div>
           <p className="mt-1.5 text-xl font-bold tracking-tight text-cyan-300 sm:text-2xl">
-            {availableMakes.length}
-            <span className="ml-1.5 text-xs font-normal text-gray-400">brands indexed</span>
+            {availableMakes.length > 0 ? availableMakes.length : `${catalogMetrics.inStockRate || 0}%`}
+            <span className="ml-1.5 text-xs font-normal text-gray-400">
+              {availableMakes.length > 0 ? 'brands indexed' : 'items in stock'}
+            </span>
           </p>
         </div>
       </div>
@@ -610,7 +614,7 @@ function Parts() {
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Search make, model, year, part name, SKU, price across 55k+ parts..."
+            placeholder="Search title, description, SKU, price across catalog..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded-xl border border-gray-700 bg-gray-900/90 py-2.5 pl-10 pr-9 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
@@ -668,10 +672,12 @@ function Parts() {
             >
               <option value="newest">Sort: Newest Added</option>
               <option value="oldest">Sort: Oldest Added</option>
+              <option value="title-asc">Title: A to Z</option>
+              <option value="title-desc">Title: Z to A</option>
               <option value="price-asc">Price: Low to High</option>
               <option value="price-desc">Price: High to Low</option>
-              <option value="year-desc">Year: Newest</option>
-              <option value="make-asc">Make: A to Z</option>
+              {availableMakes.length > 0 && <option value="make-asc">Make: A to Z</option>}
+              {catalogMetrics.totalCount > 0 && <option value="year-desc">Year: Newest</option>}
             </select>
           </div>
 
@@ -761,10 +767,7 @@ function Parts() {
             <table className="w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-gray-800 bg-gray-800/50 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                  <th scope="col" className="px-4 py-3.5">Part Description</th>
-                  <th scope="col" className="px-3 py-3.5">Make</th>
-                  <th scope="col" className="px-3 py-3.5">Model</th>
-                  <th scope="col" className="px-3 py-3.5">Year</th>
+                  <th scope="col" className="px-4 py-3.5">Title / Description</th>
                   <th scope="col" className="px-3 py-3.5">Price</th>
                   <th scope="col" className="px-3 py-3.5">Availability</th>
                   <th scope="col" className="py-3.5 pl-3 pr-4 text-right">Actions</th>
@@ -777,41 +780,35 @@ function Parts() {
                 {parts.map((part, index) => {
                   const isInStock = (part.availability || 'in stock').toLowerCase() === 'in stock';
                   const isDeleting = deletingPartId === part._id;
+                  const displayTitle = part.title || [part.year, part.make, part.model, part.trim, part.part].filter(Boolean).join(' ') || part.part || 'Untitled Part';
 
                   return (
                     <tr
                       key={part._id || index}
                       className="group transition-colors hover:bg-gray-800/40"
                     >
-                      {/* Part Description / Title */}
-                      <td className="max-w-[260px] px-4 py-3.5">
-                        <div className="font-semibold text-white truncate" title={part.title || part.part}>
-                          {part.part || 'Unnamed Part'}
+                      {/* Title / Description */}
+                      <td className="px-4 py-3.5">
+                        <div className="font-semibold text-white text-sm" title={displayTitle}>
+                          {displayTitle}
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-400">
+                        <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-400">
                           {part.externalId && (
-                            <span className="font-mono text-[10px] text-emerald-400 bg-emerald-500/10 px-1 rounded">
+                            <span className="font-mono text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
                               {part.externalId}
                             </span>
                           )}
-                          {part.condition && <span className="capitalize">{part.condition}</span>}
-                          {part.trim && <span>• {part.trim}</span>}
+                          {part.condition && (
+                            <span className="capitalize text-[11px] bg-gray-800 px-1.5 py-0.5 rounded text-gray-300">
+                              {part.condition}
+                            </span>
+                          )}
+                          {part.productType && (
+                            <span className="text-[11px] text-gray-400">
+                              {part.productType}
+                            </span>
+                          )}
                         </div>
-                      </td>
-
-                      {/* Make */}
-                      <td className="whitespace-nowrap px-3 py-3.5 text-gray-300">
-                        {part.make || '—'}
-                      </td>
-
-                      {/* Model */}
-                      <td className="whitespace-nowrap px-3 py-3.5 text-gray-300">
-                        {part.model || '—'}
-                      </td>
-
-                      {/* Year */}
-                      <td className="whitespace-nowrap px-3 py-3.5 font-mono text-gray-300">
-                        {part.year || '—'}
                       </td>
 
                       {/* Price */}
@@ -844,7 +841,7 @@ function Parts() {
                           <button
                             type="button"
                             onClick={() => handleOpenEditModal(part)}
-                            title="Edit part & photos"
+                            title="Edit part"
                             className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-800 hover:text-emerald-300"
                           >
                             <Pencil className="h-4 w-4" />
@@ -950,8 +947,8 @@ function Parts() {
                   </h3>
                   <p className="text-xs text-gray-400">
                     {editingPart
-                      ? 'Update specifications, vehicle fitment, and pricing'
-                      : 'Fill in vehicle specs, part details, and price'}
+                      ? 'Update single description, pricing, and stock details'
+                      : 'Fill in single description, pricing, and stock details'}
                   </p>
                 </div>
               </div>
@@ -967,11 +964,30 @@ function Parts() {
 
             {/* Modal Form */}
             <form onSubmit={handleFormSubmit} className="space-y-4 p-5">
-              {/* Sheet Catalog Fields */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+              {/* Title / Description - Primary field */}
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-gray-300">
+                  Title / Description <span className="text-rose-400">*</span>
+                </label>
+                <textarea
+                  name="title"
+                  rows={2}
+                  value={form.title}
+                  onChange={handleFormChange}
+                  placeholder="e.g. 2008 Subaru Outback Legacy AT 2.5L exc. Outback turbo Transmission"
+                  className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3.5 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 resize-none"
+                  required
+                />
+                <p className="mt-1 text-[11px] text-gray-400">
+                  Saved directly to the title field as a single description for the part.
+                </p>
+              </div>
+
+              {/* Sheet ID & Condition & Product Type */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-gray-300">
-                    Sheet ID
+                    Sheet ID / SKU
                   </label>
                   <input
                     name="externalId"
@@ -984,105 +1000,33 @@ function Parts() {
 
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-gray-300">
-                    Part <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    name="part"
-                    value={form.part}
-                    onChange={handleFormChange}
-                    placeholder="e.g. Engine"
-                    className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-gray-300">
                     Condition
                   </label>
                   <input
                     name="condition"
                     value={form.condition}
                     onChange={handleFormChange}
-                    placeholder="e.g. used"
+                    placeholder="e.g. used, OEM, refurbished"
                     className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-gray-300">
-                  Title
-                </label>
-                <input
-                  name="title"
-                  value={form.title}
-                  onChange={handleFormChange}
-                  placeholder="e.g. Engine - 1960 - Saab - 93 (1960 Down) - Direct"
-                  className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-4 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
-                />
-              </div>
-
-              {/* Vehicle Fitment: Make, Model, Year, Trim */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-gray-300">
-                    Make <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    name="make"
-                    value={form.make}
-                    onChange={handleFormChange}
-                    placeholder="e.g. Toyota"
-                    className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
-                    required
                   />
                 </div>
 
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-gray-300">
-                    Model <span className="text-rose-400">*</span>
+                    Product Type
                   </label>
                   <input
-                    name="model"
-                    value={form.model}
+                    name="productType"
+                    value={form.productType}
                     onChange={handleFormChange}
-                    placeholder="e.g. Camry"
-                    className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-gray-300">
-                    Year <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    name="year"
-                    value={form.year}
-                    onChange={handleFormChange}
-                    placeholder="e.g. 2021"
-                    className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-gray-300">
-                    Trim
-                  </label>
-                  <input
-                    name="trim"
-                    value={form.trim}
-                    onChange={handleFormChange}
-                    placeholder="e.g. 6-226"
+                    placeholder="e.g. Transmission, Engine"
                     className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
                   />
                 </div>
               </div>
 
               {/* Price & Stock Availability */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-gray-300">
                     Price ($ USD) <span className="text-rose-400">*</span>
@@ -1132,20 +1076,67 @@ function Parts() {
                     <option value="out of stock">Out of Stock</option>
                   </select>
                 </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-gray-300">
-                    Product Type
-                  </label>
-                  <input
-                    name="productType"
-                    value={form.productType}
-                    onChange={handleFormChange}
-                    placeholder="Auto Parts & Accessories"
-                    className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
-                  />
-                </div>
               </div>
+
+              {/* Optional Fitment Details (Collapsible) */}
+              <details className="group rounded-xl border border-gray-800 bg-gray-900/40 p-3 text-xs text-gray-400">
+                <summary className="cursor-pointer font-medium text-gray-400 hover:text-gray-200 list-none flex items-center justify-between">
+                  <span>Additional fitment breakdown (Optional)</span>
+                  <span className="text-[10px] text-gray-500 group-open:rotate-180 transition-transform">▼</span>
+                </summary>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 mt-3 pt-3 border-t border-gray-800/80">
+                  <div>
+                    <label className="mb-1 block text-[11px] text-gray-400">Part Name</label>
+                    <input
+                      name="part"
+                      value={form.part}
+                      onChange={handleFormChange}
+                      placeholder="e.g. Transmission"
+                      className="w-full rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-white placeholder-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-gray-400">Make</label>
+                    <input
+                      name="make"
+                      value={form.make}
+                      onChange={handleFormChange}
+                      placeholder="e.g. Subaru"
+                      className="w-full rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-white placeholder-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-gray-400">Model</label>
+                    <input
+                      name="model"
+                      value={form.model}
+                      onChange={handleFormChange}
+                      placeholder="e.g. Outback"
+                      className="w-full rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-white placeholder-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-gray-400">Year</label>
+                    <input
+                      name="year"
+                      value={form.year}
+                      onChange={handleFormChange}
+                      placeholder="e.g. 2008"
+                      className="w-full rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-white placeholder-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-gray-400">Trim</label>
+                    <input
+                      name="trim"
+                      value={form.trim}
+                      onChange={handleFormChange}
+                      placeholder="e.g. Legacy AT"
+                      className="w-full rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-white placeholder-gray-500"
+                    />
+                  </div>
+                </div>
+              </details>
 
               {/* Modal Actions */}
               <div className="mt-6 flex items-center justify-end gap-2.5 pt-2 border-t border-gray-800">
@@ -1248,9 +1239,9 @@ function Parts() {
 
               {/* Supported Columns Guide */}
               <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-3">
-                <span className="text-[11px] font-semibold text-gray-400">Required & Supported Columns:</span>
+                <span className="text-[11px] font-semibold text-gray-400">Supported Columns:</span>
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {['Part', 'Make', 'Model', 'Year', 'Price', 'Availability', 'Trim', 'Condition', 'ID / SKU'].map((col) => (
+                  {['Title / Description', 'Price', 'Availability', 'Part', 'Make', 'Model', 'Year', 'Trim', 'Condition', 'ID / SKU'].map((col) => (
                     <span
                       key={col}
                       className="rounded-md bg-gray-800 px-2 py-0.5 text-[10px] font-medium text-gray-300 border border-gray-700/60"
