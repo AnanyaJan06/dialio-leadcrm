@@ -104,18 +104,40 @@ export const getParts = async (req, res) => {
     const filter = {};
 
     if (search?.trim()) {
-      const regex = { $regex: escapeRegex(search.trim()), $options: 'i' };
-      filter.$or = [
-        { externalId: regex },
-        { title: regex },
-        { part: regex },
-        { make: regex },
-        { model: regex },
-        { year: regex },
-        { trim: regex },
-        { condition: regex },
-        { productType: regex },
-      ];
+      const words = search.trim().split(/\s+/).filter(Boolean);
+      if (words.length <= 1) {
+        const regex = { $regex: escapeRegex(search.trim()), $options: 'i' };
+        filter.$or = [
+          { externalId: regex },
+          { title: regex },
+          { part: regex },
+          { make: regex },
+          { model: regex },
+          { year: regex },
+          { trim: regex },
+          { condition: regex },
+          { productType: regex },
+        ];
+      } else {
+        filter.$and = words.map((word) => {
+          const lower = word.toLowerCase();
+          const term = (lower === 'transmission' || lower === 'transmition' || lower === 'transmision') ? 'trans' : word;
+          const regex = { $regex: escapeRegex(term), $options: 'i' };
+          return {
+            $or: [
+              { externalId: regex },
+              { title: regex },
+              { part: regex },
+              { make: regex },
+              { model: regex },
+              { year: regex },
+              { trim: regex },
+              { condition: regex },
+              { productType: regex },
+            ],
+          };
+        });
+      }
     }
 
     if (availability && availability !== 'all') {
