@@ -137,7 +137,7 @@ Core Guidelines:
    - When a part is not in stock or not found: Reply exactly "Let me check and update you shortly."
    - When multiple variants match the customer's vehicle (e.g., different engine sizes or transmission types): Ask a short, human clarifying question (e.g. "Is yours 1.5L turbo or 2.0L non-turbo? Also automatic or manual?").
 3. Common Questions & Typos:
-   - Price-only inquiries (e.g., "price?", "how much?", "/price"): Reply with the exact USD price (e.g., "$450"). If not in catalog, reply "Let me check and update you shortly."
+   - Price inquiries (e.g., "price?", "how much?", "/price"): Reply in the format "<Part Title> - $<Price.toFixed(2)>" (e.g., "2019 Honda Civic 2.0L non-turbo CVT Automatic Transmission - $1250.00"). If not in catalog, reply "Let me check and update you shortly."
    - Warranty inquiries: Confirm OEM parts include a standard 30-90 day replacement warranty.
    - Mileage inquiries: Confirm mechanical parts are tested OEM units with verified low mileage.
    - Shipping inquiries: State standard shipping takes approximately 7-14 business days with tracking.
@@ -217,21 +217,24 @@ export const detectInquiryTopics = (text = '') => {
 export const generateDirectAnswer = ({ lead, detectedTopics, partAvailability }) => {
   if (!detectedTopics || detectedTopics.length === 0) return null;
 
+  // Disambiguation takes highest priority when part availability is ambiguous
+  if (partAvailability?.status === 'ambiguous' && partAvailability?.clarifyingQuestion) {
+    return partAvailability.clarifyingQuestion;
+  }
+
   const inStockMatch = partAvailability?.matches?.find(
     (p) => String(p.availability || '').toLowerCase() === 'in stock' && p.price
   ) || partAvailability?.matches?.[0];
 
   const hasPrice = inStockMatch && typeof inStockMatch.price === 'number' && inStockMatch.price > 0;
-  const priceValue = hasPrice ? (inStockMatch.priceFormatted || `$${inStockMatch.price}`) : null;
+  const priceFormatted = hasPrice
+    ? (inStockMatch.title ? `${inStockMatch.title} - $${Number(inStockMatch.price).toFixed(2)}` : `$${Number(inStockMatch.price).toFixed(2)}`)
+    : null;
+
   const isPriceOnlyInquiry = detectedTopics.length === 1 && detectedTopics.includes('price');
 
   if (isPriceOnlyInquiry) {
-    return priceValue || 'Let me check and update you shortly.';
-  }
-
-  // Disambiguation takes highest priority when part availability is ambiguous
-  if (partAvailability?.status === 'ambiguous' && partAvailability?.clarifyingQuestion) {
-    return partAvailability.clarifyingQuestion;
+    return priceFormatted || 'Let me check and update you shortly.';
   }
 
   const parts = [];
@@ -239,8 +242,8 @@ export const generateDirectAnswer = ({ lead, detectedTopics, partAvailability })
   // Availability / Part inquiry answer (human-like)
   if (detectedTopics.includes('availability')) {
     if (partAvailability?.status === 'available') {
-      if (detectedTopics.includes('price') && priceValue) {
-        parts.push(`Yes, we have it in stock for ${priceValue}.`);
+      if (detectedTopics.includes('price') && priceFormatted) {
+        parts.push(priceFormatted);
       } else {
         parts.push('Yes, we have it in stock.');
       }
@@ -248,8 +251,8 @@ export const generateDirectAnswer = ({ lead, detectedTopics, partAvailability })
       parts.push('Let me check and update you shortly.');
     }
   } else if (detectedTopics.includes('price')) {
-    if (priceValue) {
-      parts.push(`The price is ${priceValue} with shipping included.`);
+    if (priceFormatted) {
+      parts.push(priceFormatted);
     } else {
       parts.push('Let me check and update you shortly.');
     }
@@ -732,8 +735,21 @@ export const findAvailablePartsForLead = async (lead, recentMessages = []) => {
   };
 };
 
+const getLatestInboundMessage = (messages = []) => {
+  if (!Array.isArray(messages) || messages.length === 0) return '';
+  const inbounds = messages.filter((m) => m.direction === 'inbound');
+  if (!inbounds.length) return '';
+
+  const hasDates = inbounds.some((m) => m.createdAt);
+  if (hasDates) {
+    return inbounds.slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0]?.body || '';
+  }
+
+  return inbounds[inbounds.length - 1]?.body || inbounds[0]?.body || '';
+};
+
 export const generateAiReply = async ({ lead, recentMessages = [], instruction = 'reply_to_latest_message', automatic = false }) => {
-  const latestInbound = recentMessages.find((message) => message.direction === 'inbound')?.body || '';
+  const latestInbound = getLatestInboundMessage(recentMessages);
   const textToAnalyze = [instruction !== 'reply_to_latest_message' && instruction !== 'follow_up' ? instruction : '', latestInbound]
     .filter(Boolean)
     .join(' ');
@@ -743,8 +759,7 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
   const directReply = generateDirectAnswer({ lead, detectedTopics, partAvailability });
   const isDirectPriceOnlyReply = detectedTopics.length === 1
     && detectedTopics.includes('price')
-    && directReply
-    && /^\$\d[\d,]*(?:\.\d{2})?$/.test(directReply);
+    && Boolean(directReply);
 
   // Return direct answer immediately for part availability or price inquiries (short, human-like)
   const isDirectPartInquiry = directReply && (
@@ -757,7 +772,7 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
       draft: directReply,
       intent: 'answer_question',
       safeToAutoSend: true,
-      reason: partAvailability.reason || 'Part availability answer',
+      reason: partAvailability.reason || 'Part availability / price answer',
       partAvailability,
       suggestedMediaUrls: [],
     };
@@ -788,7 +803,7 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
       'Part availability not found or out of stock: Reply exactly "Let me check and update you shortly."',
       'Multiple part variants: If partAvailability.status is ambiguous, ask the clarifying question (e.g., "Is yours 1.5L turbo or 2.0L non-turbo? Also automatic or manual?").',
       'Recognize shorthand, single words, slash commands (/price, /warranty, /mileage), and typos (warrany, waranty, milage, prce) as direct customer questions asking for those details.',
-      'Price-only questions: If the customer only asks about price or cost (e.g., "price?", "price please", "/price", "how much"), provide only the exact price from partAvailability if available (e.g., "$450"). If not in catalog, reply "Let me check and update you shortly."',
+      'Price questions: Reply in the format "<Part Title> - $<Price.toFixed(2)>" (e.g., "2019 Honda Civic 2.0L non-turbo CVT Automatic Transmission - $1250.00"). If not in catalog, reply "Let me check and update you shortly."',
       'Warranty: If the customer asks about warranty (e.g., "warranty?", "warrany?"), confirm OEM parts include standard 30-90 day replacement warranty.',
       'Mileage: If the customer asks about mileage (e.g., "mileage?", "milage?"), confirm parts are quality-tested OEM units with verified low mileage.',
       'Shipping: If the customer asks about shipping, delivery time, or ETA, state that shipping takes approximately 7-14 days with tracking provided.',
