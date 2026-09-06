@@ -214,17 +214,22 @@ export const detectInquiryTopics = (text = '') => {
   return [...new Set(topics)];
 };
 
-export const getLatestInboundMessage = (messages = []) => {
-  if (!Array.isArray(messages) || messages.length === 0) return '';
+export const getInboundMessagesChronological = (messages = []) => {
+  if (!Array.isArray(messages) || messages.length === 0) return [];
   const inbounds = messages.filter((m) => m.direction === 'inbound');
-  if (!inbounds.length) return '';
+  if (!inbounds.length) return [];
 
   const hasDates = inbounds.some((m) => m.createdAt);
   if (hasDates) {
-    return inbounds.slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0]?.body || '';
+    return inbounds.slice().sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
   }
 
-  return inbounds[inbounds.length - 1]?.body || inbounds[0]?.body || '';
+  return inbounds.slice();
+};
+
+export const getLatestInboundMessage = (messages = []) => {
+  const inbounds = getInboundMessagesChronological(messages);
+  return inbounds.length ? (inbounds[inbounds.length - 1]?.body || '') : '';
 };
 
 export const getLatestOutboundMessage = (messages = []) => {
@@ -512,9 +517,11 @@ const buildRegexFilter = (field, value, exact = false) => {
   };
 };
 
-const PART_KEYWORDS = {
+export const PART_KEYWORDS = {
+  'transfer case': ['transfer case', 'transfercase', 'transfer-case', 't-case', 't case'],
   transmission: ['transmission', 'transmition', 'transmision', 'tranny', 'trans', 'gearbox'],
-  engine: ['engine', 'motor', 'engin'],
+  differential: ['differential', 'diff', 'carrier'],
+  engine: ['engine', 'motor', 'engin', 'longblock'],
   alternator: ['alternator', 'alternater'],
   starter: ['starter'],
   compressor: ['compressor', 'compresser', 'ac compressor', 'a/c compressor'],
@@ -523,17 +530,15 @@ const PART_KEYWORDS = {
   bumper: ['bumper', 'front bumper', 'rear bumper'],
   hood: ['hood'],
   fender: ['fender'],
-  door: ['door'],
+  door: ['door', 'doors'],
   mirror: ['mirror', 'side mirror'],
   radiator: ['radiator'],
-  'transfer case': ['transfer case', 'transfercase'],
-  differential: ['differential', 'diff'],
   axle: ['axle'],
   strut: ['strut'],
   shock: ['shock', 'shocks'],
 };
 
-const COMMON_MAKES = [
+export const COMMON_MAKES = [
   'acura', 'audi', 'bmw', 'buick', 'cadillac', 'chevrolet', 'chevy', 'chrysler',
   'dodge', 'ford', 'gmc', 'honda', 'hyundai', 'infiniti', 'jeep', 'kia',
   'lexus', 'lincoln', 'mazda', 'mercedes', 'mercedes-benz', 'mercury', 'mini',
@@ -541,22 +546,22 @@ const COMMON_MAKES = [
   'volkswagen', 'vw', 'volvo'
 ];
 
-const normalizePartKeyword = (word = '') => {
+export const normalizePartKeyword = (word = '') => {
   const lower = String(word || '').toLowerCase();
   for (const [canonical, aliases] of Object.entries(PART_KEYWORDS)) {
-    if (aliases.some((alias) => lower.includes(alias))) {
-      return canonical;
+    for (const alias of aliases) {
+      const escaped = escapeRegex(alias).replace(/\s+/g, '\\s+');
+      if (new RegExp(`\\b${escaped}\\b`, 'i').test(lower)) {
+        return canonical;
+      }
     }
   }
   return null;
 };
 
-const extractVehicleDetails = (lead, recentMessages = []) => {
-  const inbounds = Array.isArray(recentMessages)
-    ? recentMessages.filter((m) => m.direction === 'inbound')
-    : [];
-
-  const latestInbound = inbounds[inbounds.length - 1]?.body || '';
+export const extractVehicleDetails = (lead, recentMessages = []) => {
+  const inbounds = getInboundMessagesChronological(recentMessages);
+  const latestInbound = inbounds.length ? (inbounds[inbounds.length - 1]?.body || '') : '';
   const latestLower = latestInbound.toLowerCase();
 
   // 1. Check if the latest message specifically mentions a new part
@@ -603,7 +608,7 @@ const extractVehicleDetails = (lead, recentMessages = []) => {
   if (!make && lead?.make) make = String(lead.make).trim().toLowerCase();
   if (!model && lead?.model) model = String(lead.model).trim().toLowerCase();
 
-  // If part was NOT in latest message, look back in inbound messages, then lead
+  // If part was NOT in latest message, look back in inbound messages (newest to oldest), then lead
   if (!partRequested) {
     for (let i = inbounds.length - 1; i >= 0; i--) {
       const p = normalizePartKeyword(inbounds[i].body || '');
@@ -636,10 +641,22 @@ const extractVehicleDetails = (lead, recentMessages = []) => {
   }
 
   // Determine relevant specs text:
-  // If a new part was asked in the latest message, only use specs from the latest message
+  // If a new part was asked in the latest message, only use specs from the latest message.
+  // If a follow-up inquiry (e.g., "how much?"), use specs since this part was requested.
   let relevantSpecsText = latestLower;
   if (!partInLatest) {
-    relevantSpecsText = inbounds.map((m) => m.body || '').join(' ').toLowerCase();
+    let partSwitchIndex = -1;
+    for (let i = inbounds.length - 1; i >= 0; i--) {
+      if (normalizePartKeyword(inbounds[i].body || '') === partRequested) {
+        partSwitchIndex = i;
+        break;
+      }
+    }
+    if (partSwitchIndex !== -1) {
+      relevantSpecsText = inbounds.slice(partSwitchIndex).map((m) => m.body || '').join(' ').toLowerCase();
+    } else {
+      relevantSpecsText = inbounds.map((m) => m.body || '').join(' ').toLowerCase();
+    }
   }
 
   return {
@@ -730,7 +747,9 @@ export const findAvailablePartsForLead = async (lead, recentMessages = []) => {
   }
 
   if (details.partRequested) {
-    const partRoot = details.partRequested === 'transmission' ? 'trans' : details.partRequested;
+    const partRoot = details.partRequested === 'transmission'
+      ? '(transmission|\\btrans\\b)'
+      : escapeRegex(details.partRequested);
     conditions.push({ title: { $regex: partRoot, $options: 'i' } });
   }
 
@@ -743,15 +762,17 @@ export const findAvailablePartsForLead = async (lead, recentMessages = []) => {
     }
   }
 
-  // Check specific engine specs stated by customer
-  const engineSpecMatch = details.inboundText.match(/\b(\d\.\d\s*L?)\b/i);
-  if (engineSpecMatch) {
-    conditions.push({ title: { $regex: engineSpecMatch[1].replace(/\s+/g, '\\s*'), $options: 'i' } });
-  }
-  if (/\bnon-turbo\b/i.test(details.inboundText)) {
-    conditions.push({ title: { $regex: 'non-turbo', $options: 'i' } });
-  } else if (/\bturbo\b/i.test(details.inboundText)) {
-    conditions.push({ title: { $regex: 'turbo', $options: 'i' } });
+  // Only apply engine displacement/turbo if part requested is engine or transmission
+  if (details.partRequested === 'engine' || details.partRequested === 'transmission') {
+    const engineSpecMatch = details.inboundText.match(/\b(\d\.\d\s*L?)\b/i);
+    if (engineSpecMatch) {
+      conditions.push({ title: { $regex: engineSpecMatch[1].replace(/\s+/g, '\\s*'), $options: 'i' } });
+    }
+    if (/\bnon-turbo\b/i.test(details.inboundText)) {
+      conditions.push({ title: { $regex: 'non-turbo', $options: 'i' } });
+    } else if (/\bturbo\b/i.test(details.inboundText)) {
+      conditions.push({ title: { $regex: 'turbo', $options: 'i' } });
+    }
   }
 
   if (!conditions.length) {
@@ -1566,6 +1587,23 @@ export const receiveMessage = async (req, res) => {
           if (lead) lead.zip = zipMatch[0];
         } catch (zipErr) {
           console.warn('Failed to update lead zip:', zipErr.message);
+        }
+      }
+
+      // Update lead.partRequested if customer asks for a new part
+      const newPartInInbound = normalizePartKeyword(body);
+      if (newPartInInbound && linkedLeadId && lead && lead.partRequested !== newPartInInbound) {
+        try {
+          await Lead.findByIdAndUpdate(linkedLeadId, { partRequested: newPartInInbound });
+          lead.partRequested = newPartInInbound;
+          if (io) {
+            io.emit('lead-updated', {
+              leadId: String(linkedLeadId),
+              partRequested: newPartInInbound,
+            });
+          }
+        } catch (partErr) {
+          console.warn('Failed to update lead partRequested:', partErr.message);
         }
       }
 
