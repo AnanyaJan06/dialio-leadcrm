@@ -493,64 +493,94 @@ const normalizePartKeyword = (word = '') => {
 };
 
 const extractVehicleDetails = (lead, recentMessages = []) => {
-  const inboundTexts = Array.isArray(recentMessages)
-    ? recentMessages.filter((m) => m.direction === 'inbound').map((m) => m.body || '').join(' ')
-    : String(recentMessages || '');
+  const inbounds = Array.isArray(recentMessages)
+    ? recentMessages.filter((m) => m.direction === 'inbound')
+    : [];
 
-  let make = String(lead?.make || '').trim().toLowerCase();
-  let model = String(lead?.model || '').trim().toLowerCase();
-  let year = String(lead?.year || '').trim();
-  let partRequested = String(lead?.partRequested || '').trim();
-  let yearMakeModel = String(lead?.yearMakeModel || '').trim();
+  const latestInbound = inbounds[inbounds.length - 1]?.body || '';
+  const latestLower = latestInbound.toLowerCase();
 
-  // If make/model/year are empty, try extracting from yearMakeModel
-  if ((!year || !make || !model) && yearMakeModel) {
-    const match = yearMakeModel.match(/^(\d{4})\s+([^\s]+)(?:\s+(.*))?$/);
-    if (match) {
-      if (!year) year = match[1];
-      if (!make) make = match[2].toLowerCase();
-      if (!model) model = (match[3] || '').trim().toLowerCase();
+  // 1. Check if the latest message specifically mentions a new part
+  const partInLatest = normalizePartKeyword(latestLower);
+
+  // 2. Check if the latest message mentions a specific vehicle (year, make)
+  const yMatchLatest = latestLower.match(/\b(19\d\d|20[0-2]\d)\b/);
+  let makeInLatest = '';
+  for (const m of COMMON_MAKES) {
+    if (new RegExp(`\\b${m}\\b`, 'i').test(latestLower)) {
+      makeInLatest = m === 'chevy' ? 'chevy' : (m === 'vw' ? 'volkswagen' : m);
+      break;
     }
   }
 
-  const combinedInbound = `${inboundTexts} ${yearMakeModel}`.trim();
-  const lowerInbound = combinedInbound.toLowerCase();
+  let year = yMatchLatest ? yMatchLatest[1] : '';
+  let make = makeInLatest;
+  let model = '';
 
-  if (!year) {
-    const yMatch = lowerInbound.match(/\b(19\d\d|20[0-2]\d)\b/);
-    if (yMatch) year = yMatch[1];
-  }
+  // If latest message specifically asked for a part, that part takes precedence over earlier parts & lead.partRequested
+  let partRequested = partInLatest || '';
 
-  if (!make) {
-    for (const m of COMMON_MAKES) {
-      if (new RegExp(`\\b${m}\\b`, 'i').test(lowerInbound)) {
-        make = m;
-        if (make === 'chevy') make = 'chevy';
-        if (make === 'vw') make = 'volkswagen';
-        break;
+  // If latest message didn't specify vehicle, inherit vehicle from recent messages (newest to oldest)
+  if (!year || !make) {
+    for (let i = inbounds.length - 1; i >= 0; i--) {
+      const text = (inbounds[i].body || '').toLowerCase();
+      if (!year) {
+        const ym = text.match(/\b(19\d\d|20[0-2]\d)\b/);
+        if (ym) year = ym[1];
+      }
+      if (!make) {
+        for (const m of COMMON_MAKES) {
+          if (new RegExp(`\\b${m}\\b`, 'i').test(text)) {
+            make = m === 'chevy' ? 'chevy' : (m === 'vw' ? 'volkswagen' : m);
+            break;
+          }
+        }
       }
     }
   }
 
+  // If still not found, check lead record
+  if (!year && lead?.year) year = String(lead.year).trim();
+  if (!make && lead?.make) make = String(lead.make).trim().toLowerCase();
+  if (!model && lead?.model) model = String(lead.model).trim().toLowerCase();
+
+  // If part was NOT in latest message, look back in inbound messages, then lead
   if (!partRequested) {
-    const detectedPart = normalizePartKeyword(lowerInbound);
-    if (detectedPart) {
-      partRequested = detectedPart;
-    }
-  }
-
-  if (!model && make) {
-    const makeIdx = lowerInbound.indexOf(make);
-    const afterMake = lowerInbound.slice(makeIdx + make.length).trim();
-    const tokens = afterMake.split(/\s+/).filter(Boolean);
-    for (const token of tokens) {
-      const isPartWord = PART_KEYWORDS.transmission.includes(token) || PART_KEYWORDS.engine.includes(token);
-      const isStopWord = ['for', 'the', 'a', 'an', 'in', 'stock', 'do', 'you', 'have', 'with', 'is', 'to', 'need'].includes(token);
-      if (!isPartWord && !isStopWord && !/^\d{4}$/.test(token) && token.length > 1) {
-        model = token;
+    for (let i = inbounds.length - 1; i >= 0; i--) {
+      const p = normalizePartKeyword(inbounds[i].body || '');
+      if (p) {
+        partRequested = p;
         break;
       }
     }
+  }
+  if (!partRequested && lead?.partRequested) {
+    partRequested = normalizePartKeyword(lead.partRequested) || lead.partRequested;
+  }
+
+  // Model extraction
+  if (!model && make) {
+    const allInboundTexts = inbounds.map((m) => m.body || '').join(' ').toLowerCase();
+    const makeIdx = allInboundTexts.indexOf(make);
+    if (makeIdx !== -1) {
+      const afterMake = allInboundTexts.slice(makeIdx + make.length).trim();
+      const tokens = afterMake.split(/\s+/).filter(Boolean);
+      for (const token of tokens) {
+        const isPartWord = Object.values(PART_KEYWORDS).some((aliases) => aliases.includes(token));
+        const isStopWord = ['for', 'the', 'a', 'an', 'in', 'stock', 'do', 'you', 'have', 'with', 'is', 'to', 'need', 'as', 'well', 'what', 'about', 'how', 'much'].includes(token);
+        if (!isPartWord && !isStopWord && !/^\d{4}$/.test(token) && token.length > 1) {
+          model = token;
+          break;
+        }
+      }
+    }
+  }
+
+  // Determine relevant specs text:
+  // If a new part was asked in the latest message, only use specs from the latest message
+  let relevantSpecsText = latestLower;
+  if (!partInLatest) {
+    relevantSpecsText = inbounds.map((m) => m.body || '').join(' ').toLowerCase();
   }
 
   return {
@@ -558,8 +588,8 @@ const extractVehicleDetails = (lead, recentMessages = []) => {
     model,
     year,
     partRequested: normalizePartKeyword(partRequested) || partRequested,
-    yearMakeModel,
-    inboundText: lowerInbound,
+    inboundText: relevantSpecsText,
+    isNewPartAsked: Boolean(partInLatest),
   };
 };
 
@@ -645,7 +675,16 @@ export const findAvailablePartsForLead = async (lead, recentMessages = []) => {
     conditions.push({ title: { $regex: partRoot, $options: 'i' } });
   }
 
-  // Check specific engine or transmission specs stated by customer
+  // Only apply transmission specs if active part is transmission
+  if (details.partRequested === 'transmission') {
+    if (/\b(automatic|auto|cvt|at)\b/i.test(details.inboundText) && !/\b(manual|mt)\b/i.test(details.inboundText)) {
+      conditions.push({ title: { $regex: '(AT|Automatic|CVT)', $options: 'i' } });
+    } else if (/\b(manual|mt|stick)\b/i.test(details.inboundText) && !/\b(automatic|auto|cvt)\b/i.test(details.inboundText)) {
+      conditions.push({ title: { $regex: '(MT|Manual)', $options: 'i' } });
+    }
+  }
+
+  // Check specific engine specs stated by customer
   const engineSpecMatch = details.inboundText.match(/\b(\d\.\d\s*L?)\b/i);
   if (engineSpecMatch) {
     conditions.push({ title: { $regex: engineSpecMatch[1].replace(/\s+/g, '\\s*'), $options: 'i' } });
@@ -654,12 +693,6 @@ export const findAvailablePartsForLead = async (lead, recentMessages = []) => {
     conditions.push({ title: { $regex: 'non-turbo', $options: 'i' } });
   } else if (/\bturbo\b/i.test(details.inboundText)) {
     conditions.push({ title: { $regex: 'turbo', $options: 'i' } });
-  }
-
-  if (/\b(automatic|auto|cvt|at)\b/i.test(details.inboundText) && !/\b(manual|mt)\b/i.test(details.inboundText)) {
-    conditions.push({ title: { $regex: '(AT|Automatic|CVT)', $options: 'i' } });
-  } else if (/\b(manual|mt|stick)\b/i.test(details.inboundText) && !/\b(automatic|auto|cvt)\b/i.test(details.inboundText)) {
-    conditions.push({ title: { $regex: '(MT|Manual)', $options: 'i' } });
   }
 
   if (!conditions.length) {
