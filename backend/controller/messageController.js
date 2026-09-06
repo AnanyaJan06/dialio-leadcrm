@@ -140,7 +140,7 @@ Core Guidelines:
    - Price inquiries (e.g., "price?", "how much?", "/price"): Reply in the format "<Part Title> - $<Price.toFixed(2)>" (e.g., "2019 Honda Civic 2.0L non-turbo CVT Automatic Transmission - $1250.00"). If not in catalog, reply "Let me check and update you shortly."
    - Warranty inquiries: Confirm OEM parts include a standard 30-90 day replacement warranty.
    - Mileage inquiries: Confirm mechanical parts are tested OEM units with verified low mileage.
-   - Shipping inquiries: State standard shipping takes approximately 7-14 business days with tracking.
+   - Shipping inquiries: When the customer asks about shipping, first ask "Shipping address?". Once the customer provides their shipping address or zip code, reply "Shipping takes about 7-14 days."
    - Order confirmation / Placing orders: Reply "Our representative will contact you soon for confirming the order."
    - Photo requests: Reply "Our representative will send you the picture of the required part when they are online."
 4. Opt-Out Safety: If the customer asks to stop, unsubscribe, cancel, or opt out, return an empty draft ("") with safeToAutoSend: false and intent: "opt_out".`;
@@ -214,7 +214,50 @@ export const detectInquiryTopics = (text = '') => {
   return [...new Set(topics)];
 };
 
-export const generateDirectAnswer = ({ lead, detectedTopics, partAvailability }) => {
+export const getLatestInboundMessage = (messages = []) => {
+  if (!Array.isArray(messages) || messages.length === 0) return '';
+  const inbounds = messages.filter((m) => m.direction === 'inbound');
+  if (!inbounds.length) return '';
+
+  const hasDates = inbounds.some((m) => m.createdAt);
+  if (hasDates) {
+    return inbounds.slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0]?.body || '';
+  }
+
+  return inbounds[inbounds.length - 1]?.body || inbounds[0]?.body || '';
+};
+
+export const getLatestOutboundMessage = (messages = []) => {
+  if (!Array.isArray(messages) || messages.length === 0) return '';
+  const outbounds = messages.filter((m) => m.direction === 'outbound');
+  if (!outbounds.length) return '';
+
+  const hasDates = outbounds.some((m) => m.createdAt);
+  if (hasDates) {
+    return outbounds.slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0]?.body || '';
+  }
+
+  return outbounds[outbounds.length - 1]?.body || outbounds[0]?.body || '';
+};
+
+export const hasAddressDetails = (text = '') => {
+  const clean = String(text || '').trim().toLowerCase();
+  if (!clean) return false;
+
+  if (/\b\d{5}(?:-\d{4})?\b/.test(clean)) return true;
+  if (/\b\d+\s+[a-z0-9\s.,]+(st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|lane|ln|way|ct|court|hwy|highway|pkwy|parkway|apt|suite|ste|circle|cir|trail|trl)\b/i.test(clean)) {
+    return true;
+  }
+  const stateRegex = /\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|texas|california|florida|new\s*york|ohio|georgia|illinois|pennsylvania|michigan|arizona|colorado|washington|virginia|carolina)\b/i;
+  if (stateRegex.test(clean) && clean.length >= 3) {
+    return true;
+  }
+  if (/\b(p\.?o\.?\s*box)\b/i.test(clean)) return true;
+
+  return false;
+};
+
+export const generateDirectAnswer = ({ lead, detectedTopics, partAvailability, recentMessages = [] }) => {
   if (!detectedTopics || detectedTopics.length === 0) return null;
 
   // Disambiguation takes highest priority when part availability is ambiguous
@@ -235,6 +278,18 @@ export const generateDirectAnswer = ({ lead, detectedTopics, partAvailability })
 
   if (isPriceOnlyInquiry) {
     return priceFormatted || 'Let me check and update you shortly.';
+  }
+
+  const latestOutbound = getLatestOutboundMessage(recentMessages);
+  const wasAskedAddress = /shipping\s*address\?/i.test(latestOutbound);
+  const inbounds = (Array.isArray(recentMessages) ? recentMessages : []).filter((m) => m.direction === 'inbound');
+  const allInboundText = inbounds.map((m) => m.body || '').join(' ');
+  const latestInbound = getLatestInboundMessage(recentMessages);
+  const hasProvidedAddress = Boolean(lead?.zip) || hasAddressDetails(allInboundText) || (wasAskedAddress && latestInbound.trim().length > 0);
+
+  const isShippingOnlyInquiry = detectedTopics.length === 1 && detectedTopics.includes('shipping');
+  if (isShippingOnlyInquiry) {
+    return hasProvidedAddress ? 'Shipping takes about 7-14 days.' : 'Shipping address?';
   }
 
   const parts = [];
@@ -270,7 +325,11 @@ export const generateDirectAnswer = ({ lead, detectedTopics, partAvailability })
 
   // Shipping answer
   if (detectedTopics.includes('shipping')) {
-    parts.push('Standard shipping takes approximately 7-14 business days with tracking provided.');
+    if (hasProvidedAddress) {
+      parts.push('Shipping takes about 7-14 days.');
+    } else {
+      parts.push('Shipping address?');
+    }
   }
 
   // Order confirmation / Placing order answer
@@ -768,44 +827,43 @@ export const findAvailablePartsForLead = async (lead, recentMessages = []) => {
   };
 };
 
-const getLatestInboundMessage = (messages = []) => {
-  if (!Array.isArray(messages) || messages.length === 0) return '';
-  const inbounds = messages.filter((m) => m.direction === 'inbound');
-  if (!inbounds.length) return '';
-
-  const hasDates = inbounds.some((m) => m.createdAt);
-  if (hasDates) {
-    return inbounds.slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0]?.body || '';
-  }
-
-  return inbounds[inbounds.length - 1]?.body || inbounds[0]?.body || '';
-};
-
 export const generateAiReply = async ({ lead, recentMessages = [], instruction = 'reply_to_latest_message', automatic = false }) => {
   const latestInbound = getLatestInboundMessage(recentMessages);
+  const latestOutbound = getLatestOutboundMessage(recentMessages);
+  const wasAskedShippingAddress = /shipping\s*address\?/i.test(latestOutbound);
+
   const textToAnalyze = [instruction !== 'reply_to_latest_message' && instruction !== 'follow_up' ? instruction : '', latestInbound]
     .filter(Boolean)
     .join(' ');
   const detectedTopics = detectInquiryTopics(textToAnalyze || latestInbound || instruction);
 
+  if (wasAskedShippingAddress && latestInbound.trim().length > 0 && !detectedTopics.includes('shipping')) {
+    detectedTopics.push('shipping');
+  }
+
   const partAvailability = await findAvailablePartsForLead(lead, recentMessages);
-  const directReply = generateDirectAnswer({ lead, detectedTopics, partAvailability });
+  const directReply = generateDirectAnswer({ lead, detectedTopics, partAvailability, recentMessages });
   const isDirectPriceOnlyReply = detectedTopics.length === 1
     && detectedTopics.includes('price')
     && Boolean(directReply);
 
-  // Return direct answer immediately for part availability or price inquiries (short, human-like)
-  const isDirectPartInquiry = directReply && (
+  const isDirectShippingOnlyReply = detectedTopics.length === 1
+    && detectedTopics.includes('shipping')
+    && Boolean(directReply);
+
+  // Return direct answer immediately for part availability, price, or shipping inquiries (short, human-like)
+  const isDirectReplyReady = directReply && (
     isDirectPriceOnlyReply ||
+    isDirectShippingOnlyReply ||
     (detectedTopics.includes('availability') && !detectedTopics.some((t) => ['warranty', 'mileage', 'shipping', 'order', 'photo'].includes(t)))
   );
 
-  if (isDirectPartInquiry) {
+  if (isDirectReplyReady) {
     return {
       draft: directReply,
       intent: 'answer_question',
       safeToAutoSend: true,
-      reason: partAvailability.reason || 'Part availability / price answer',
+      reason: isDirectShippingOnlyReply ? 'Shipping inquiry answer' : (partAvailability.reason || 'Part availability / price answer'),
       partAvailability,
       suggestedMediaUrls: [],
     };
@@ -839,7 +897,7 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
       'Price questions: Reply in the format "<Part Title> - $<Price.toFixed(2)>" (e.g., "2019 Honda Civic 2.0L non-turbo CVT Automatic Transmission - $1250.00"). If not in catalog, reply "Let me check and update you shortly."',
       'Warranty: If the customer asks about warranty (e.g., "warranty?", "warrany?"), confirm OEM parts include standard 30-90 day replacement warranty.',
       'Mileage: If the customer asks about mileage (e.g., "mileage?", "milage?"), confirm parts are quality-tested OEM units with verified low mileage.',
-      'Shipping: If the customer asks about shipping, delivery time, or ETA, state that shipping takes approximately 7-14 days with tracking provided.',
+      'Shipping: Whenever the customer asks about shipping, first ask "Shipping address?". If the customer has already provided or just replied with their shipping address or zip code, reply "Shipping takes about 7-14 days."',
       'Order Confirmation / Placing Order: Reply "Our representative will contact you soon for confirming the order."',
       'Photo / Picture Requests: Reply "Our representative will send you the picture of the required part when they are online."',
       'If the customer asks multiple questions (e.g. price and photos, or warranty and order confirmation), answer each concisely in the same short reply.',
@@ -879,7 +937,7 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
 
   // Fallback if OpenAI draft is empty or failed, but we have detected topics (price, warranty, mileage, etc.)
   if (!draft && detectedTopics.length > 0) {
-    const directReply = generateDirectAnswer({ lead, detectedTopics, partAvailability });
+    const directReply = generateDirectAnswer({ lead, detectedTopics, partAvailability, recentMessages });
     if (directReply) {
       draft = directReply;
       intent = 'answer_question';
@@ -1488,8 +1546,30 @@ export const receiveMessage = async (req, res) => {
     // Trigger AI reply when lead exists or when inbound message asks about price, warranty, mileage, order, etc.
     try {
       const detectedTopics = detectInquiryTopics(body);
-      const hasInquiry = detectedTopics.length > 0;
       const simpleGreetingReply = getSimpleGreetingReply(body);
+
+      // Check if customer is replying to a shipping address inquiry
+      const lastOutboundMsg = await MessageLog.findOne({
+        ...(linkedLeadId ? { lead: linkedLeadId } : { phoneNumber: from }),
+        direction: 'outbound',
+      }).sort({ createdAt: -1, _id: -1 }).select('body').lean();
+      const isReplyingToShippingAddress = /shipping\s*address\?/i.test(lastOutboundMsg?.body || '');
+      if (isReplyingToShippingAddress && body.trim().length > 0 && !detectedTopics.includes('shipping')) {
+        detectedTopics.push('shipping');
+      }
+
+      // Auto-save 5-digit zip code to lead if found
+      const zipMatch = body.match(/\b\d{5}\b/);
+      if (zipMatch && linkedLeadId && !lead?.zip) {
+        try {
+          await Lead.findByIdAndUpdate(linkedLeadId, { zip: zipMatch[0] });
+          if (lead) lead.zip = zipMatch[0];
+        } catch (zipErr) {
+          console.warn('Failed to update lead zip:', zipErr.message);
+        }
+      }
+
+      const hasInquiry = detectedTopics.length > 0;
 
       if (simpleGreetingReply) {
         await sendSimpleGreetingReply({
