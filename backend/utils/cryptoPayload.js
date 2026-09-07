@@ -2,7 +2,6 @@ import CryptoJS from 'crypto-js';
 
 const getPayloadSecret = () => (
   process.env.PAYLOAD_SECRET_KEY ||
-  process.env.JWT_SECRET ||
   'dialio-leadcrm-parts-payload-secret-key-2026'
 );
 
