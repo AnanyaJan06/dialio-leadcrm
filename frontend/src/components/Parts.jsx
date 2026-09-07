@@ -20,6 +20,7 @@ import InlineLoader from './ui/InlineLoader.jsx';
 import { confirmAction } from '../utils/confirmDialog.js';
 import { showErrorToast, showSuccessToast } from '../utils/toast.js';
 import { BACKEND_URL } from '../config/api.js';
+import { decryptPayload } from '../utils/cryptoPayload.js';
 
 const emptyForm = {
   externalId: '',
@@ -212,9 +213,18 @@ function Parts() {
       const res = await fetch(`${BACKEND_URL}/api/parts?${params.toString()}`, {
         headers: authHeaders,
       });
-      const data = await res.json().catch(() => ({}));
+      const rawResponse = await res.json().catch(() => ({}));
 
-      if (!res.ok) throw new Error(data.message || 'Failed to load stock parts');
+      if (!res.ok) throw new Error(rawResponse.message || 'Failed to load stock parts');
+
+      let data = rawResponse;
+      if (rawResponse?.encrypted && rawResponse?.payload) {
+        const decrypted = decryptPayload(rawResponse.payload);
+        if (!decrypted) {
+          throw new Error('Failed to decrypt stock parts data');
+        }
+        data = decrypted;
+      }
 
       if (Array.isArray(data)) {
         setParts(data);

@@ -1,4 +1,5 @@
 import Part from '../model/Part.js';
+import { encryptPayload } from '../utils/cryptoPayload.js';
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const clean = (value) => String(value ?? '').trim();
@@ -165,7 +166,7 @@ export const getParts = async (req, res) => {
       distinctMakes
     ] = await Promise.all([
       Part.find(filter)
-        .populate('createdBy', 'name email role')
+        .select('externalId title part make model year trim price currency availability condition productType createdAt')
         .sort(sortObj)
         .skip(skip)
         .limit(limitNum)
@@ -181,7 +182,7 @@ export const getParts = async (req, res) => {
       .filter((m) => m && m.trim())
       .sort((a, b) => a.localeCompare(b));
 
-    res.json({
+    const responseData = {
       parts,
       pagination: {
         total: totalFiltered,
@@ -197,7 +198,17 @@ export const getParts = async (req, res) => {
         inStockRate: totalCount > 0 ? Math.round((inStockCount / totalCount) * 100) : 0,
         availableMakes: sortedMakes,
       },
-    });
+    };
+
+    const encrypted = encryptPayload(responseData);
+    if (encrypted) {
+      return res.json({
+        encrypted: true,
+        payload: encrypted,
+      });
+    }
+
+    res.json(responseData);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
