@@ -30,6 +30,7 @@ const unknownNumberGreeting = 'Hello! How can I help you find the right parts fo
 const autoReplyCooldownMs = Math.max(0, Number(process.env.AI_AUTO_REPLY_COOLDOWN_MS) || 120000);
 const autoReplyEnabled = String(process.env.AI_AUTO_REPLY_WHEN_AGENT_OFFLINE || 'true').toLowerCase() !== 'false';
 const optOutPattern = /\b(stop|unsubscribe|cancel|end|quit|do not contact|don't contact|do not text|don't text)\b/i;
+const discountNegotiationReply = 'How much you would like to pay ?';
 
 const getEditDistance = (left = '', right = '') => {
   const a = String(left || '');
@@ -152,6 +153,14 @@ export const detectInquiryTopics = (text = '') => {
 
   const topics = [];
 
+  // Discount / last price inquiries after a quoted price
+  if (
+    /\b(last\s*price|final\s*price|best\s*price|lowest\s*price|discount|discounted|less|lower|reduce|negotiate|negotiable|deal|offer|any\s*discount|can\s*you\s*do\s*better|is\s*this\s*your\s*(last|final|best))\b/i.test(raw) ||
+    /^\/?(discount|deal|offer|lastprice|bestprice)\b/i.test(raw)
+  ) {
+    topics.push('discount');
+  }
+
   // Price inquiries: price, prce, cost, quote, how much, how much is, rate, /price, $
   if (
     /\b(price|prce|prices|pricing|cost|costs|costing|how\s*much|quote|quotes|quotation|rate|rates|\$)\b/i.test(raw) ||
@@ -246,6 +255,13 @@ export const getLatestOutboundMessage = (messages = []) => {
   return outbounds[outbounds.length - 1]?.body || outbounds[0]?.body || '';
 };
 
+const looksLikePriceQuote = (text = '') => {
+  const value = String(text || '').trim();
+  if (!value) return false;
+
+  return /\$\s*\d+(?:,\d{3})*(?:\.\d{2})?\b/.test(value) || /\b\d+(?:,\d{3})*(?:\.\d{2})?\s*(usd|dollars?)\b/i.test(value);
+};
+
 export const hasAddressDetails = (text = '') => {
   const clean = String(text || '').trim().toLowerCase();
   if (!clean) return false;
@@ -265,6 +281,12 @@ export const hasAddressDetails = (text = '') => {
 
 export const generateDirectAnswer = ({ lead, detectedTopics, partAvailability, recentMessages = [] }) => {
   if (!detectedTopics || detectedTopics.length === 0) return null;
+
+  const latestOutbound = getLatestOutboundMessage(recentMessages);
+
+  if (detectedTopics.includes('discount') && looksLikePriceQuote(latestOutbound)) {
+    return discountNegotiationReply;
+  }
 
   // Missing vehicle details or variant disambiguation takes highest priority
   if ((partAvailability?.status === 'missing_details' || partAvailability?.status === 'ambiguous') && partAvailability?.clarifyingQuestion) {
@@ -286,7 +308,6 @@ export const generateDirectAnswer = ({ lead, detectedTopics, partAvailability, r
     return priceFormatted || 'Let me check and update you shortly.';
   }
 
-  const latestOutbound = getLatestOutboundMessage(recentMessages);
   const wasAskedAddress = /shipping\s*address\?/i.test(latestOutbound);
   const inbounds = (Array.isArray(recentMessages) ? recentMessages : []).filter((m) => m.direction === 'inbound');
   const allInboundText = inbounds.map((m) => m.body || '').join(' ');
@@ -970,11 +991,15 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
     && detectedTopics.includes('shipping')
     && Boolean(directReply);
 
+  const isDirectDiscountReply = detectedTopics.includes('discount')
+    && directReply === discountNegotiationReply;
+
   // Return direct answer immediately for missing details, part availability, price, or shipping inquiries (short, human-like)
   const isDirectReplyReady = directReply && (
     partAvailability?.status === 'missing_details' ||
     isDirectPriceOnlyReply ||
     isDirectShippingOnlyReply ||
+    isDirectDiscountReply ||
     (detectedTopics.includes('availability') && !detectedTopics.some((t) => ['warranty', 'mileage', 'shipping', 'order', 'photo'].includes(t)))
   );
 
@@ -983,7 +1008,7 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
       draft: directReply,
       intent: partAvailability?.status === 'missing_details' ? 'qualify_lead' : 'answer_question',
       safeToAutoSend: true,
-      reason: isDirectShippingOnlyReply ? 'Shipping inquiry answer' : (partAvailability.reason || 'Part availability / price answer'),
+      reason: isDirectDiscountReply ? 'Discount negotiation answer' : (isDirectShippingOnlyReply ? 'Shipping inquiry answer' : (partAvailability.reason || 'Part availability / price answer')),
       partAvailability,
       suggestedMediaUrls: [],
     };
@@ -1016,6 +1041,7 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
       'Multiple part variants: If partAvailability.status is ambiguous, ask the clarifying question (e.g., "Is yours 1.5L turbo or 2.0L non-turbo? Also automatic or manual?").',
       'Recognize shorthand, single words, slash commands (/price, /warranty, /mileage), and typos (warrany, waranty, milage, prce) as direct customer questions asking for those details.',
       'Price questions: Reply in the format "<Part Title> - $<Price.toFixed(2)>" (e.g., "2019 Honda Civic 2.0L non-turbo CVT Automatic Transmission - $1250.00"). If not in catalog, reply "Let me check and update you shortly."',
+      'Discount / last price questions: If the previous outbound message included a price and the customer asks for last price, final price, best price, lower price, discount, or a better deal, reply exactly "How much you would like to pay ?"',
       'Warranty: If the customer asks about warranty (e.g., "warranty?", "warrany?"), confirm OEM parts include standard 30-90 day replacement warranty.',
       'Mileage: If the customer asks about mileage (e.g., "mileage?", "milage?"), confirm parts are quality-tested OEM units with verified low mileage.',
       'Shipping: Whenever the customer asks about shipping, first ask "Shipping address?". If the customer has already provided or just replied with their shipping address or zip code, reply "Shipping takes about 7-14 days."',
@@ -1800,3 +1826,4 @@ export const receiveMessage = async (req, res) => {
     res.status(500).send('Internal Server Error');
   }
 };
+
