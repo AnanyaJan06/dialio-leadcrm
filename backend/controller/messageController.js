@@ -134,7 +134,7 @@ const AUTO_PARTS_ASSISTANT_INSTRUCTIONS = `You are the customer support assistan
 Core Guidelines:
 1. Brevity & Tone: Keep replies short, natural, friendly, and human (1 to 2 short sentences, under 160 characters). Never use robotic greetings, fluff, or emojis.
 2. Part Inquiries & Availability:
-   - When vehicle model and/or year are missing: Ask for the model and year before checking stock or variants (e.g., "What model and year is your Nissan?"). Never ask about engine displacement or transmission variants until model and year are known.
+   - When vehicle details are missing: Ask for the missing fields once in a short generic reply (e.g., "Please share the model and year."). Never guess a model from casual words, and never ask about engine displacement or transmission variants until model and year are known.
    - When a part is in stock and fitment is clear: Reply exactly "Yes, we have it in stock." (or include price if they also asked for price, e.g., "Yes, we have it in stock for $1,250.").
    - When a part is not in stock or not found: Reply exactly "Let me check and update you shortly."
    - When multiple variants match the customer's vehicle (e.g., different engine sizes or transmission types for that specific vehicle): Ask a short, human clarifying question (e.g. "Is yours 1.5L turbo or 2.0L non-turbo? Also automatic or manual?").
@@ -604,7 +604,8 @@ const VEHICLE_STOP_WORDS = new Set([
   'need', 'as', 'well', 'what', 'about', 'how', 'much', 'it', 'its', 'my', 'car',
   'vehicle', 'truck', 'auto', 'any', 'got', 'looking', 'please', 'thanks', 'thank',
   'can', 'get', 'of', 'and', 'or', 'at', 'on', 'by', 'hey', 'hello', 'hi', 'yes', 'no',
-  'mine', 'yours', 'year', 'model', 'make', 'price', 'cost', 'quote', 'check', 'give', 'tell', 'want'
+  'mine', 'yours', 'year', 'model', 'make', 'price', 'cost', 'quote', 'check', 'give', 'tell', 'want',
+  'good', 'morning', 'afternoon', 'evening', 'night', 'sir', 'mam', 'maam', 'madam', 'there'
 ]);
 
 export const normalizePartKeyword = (word = '') => {
@@ -826,26 +827,22 @@ export const findAvailablePartsForLead = async (lead, recentMessages = []) => {
     const missingMake = !details.make;
 
     if (missingYear || missingModel || missingMake) {
-      let clarifyingQuestion = '';
-      const makeDisplay = details.make
-        ? details.make.charAt(0).toUpperCase() + details.make.slice(1)
-        : '';
-      const modelDisplay = details.model
-        ? details.model.charAt(0).toUpperCase() + details.model.slice(1)
-        : '';
+      const missingFields = [];
+      if (missingYear) missingFields.push('year');
+      if (missingMake) missingFields.push('make');
+      if (missingModel) missingFields.push('model');
 
-      if (missingMake && missingModel && missingYear) {
-        clarifyingQuestion = 'What is the year, make, and model of your vehicle?';
-      } else if (missingMake) {
-        clarifyingQuestion = 'What is the year, make, and model of your vehicle?';
-      } else if (missingModel && missingYear) {
-        clarifyingQuestion = `What model and year is your ${makeDisplay}?`;
-      } else if (missingModel) {
-        clarifyingQuestion = details.year
-          ? `Which model is your ${details.year} ${makeDisplay}?`
-          : `Which model is your ${makeDisplay}?`;
-      } else if (missingYear) {
-        clarifyingQuestion = `What year is your ${makeDisplay} ${modelDisplay}?`;
+      let clarifyingQuestion = '';
+      if (missingFields.length === 3) {
+        clarifyingQuestion = 'Please share the year, make, and model.';
+      } else if (missingYear && missingModel && !missingMake) {
+        clarifyingQuestion = 'Please share the model and year.';
+      } else if (missingMake && missingModel && !missingYear) {
+        clarifyingQuestion = 'Please share the make and model.';
+      } else if (missingMake && missingYear && !missingModel) {
+        clarifyingQuestion = 'Please share the make and year.';
+      } else {
+        clarifyingQuestion = `Please share the ${missingFields[0]}.`;
       }
 
       return {
@@ -1035,7 +1032,7 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
       'Return JSON only.',
       'Keep replies brief, short, concise, and customer-focused (under 160 characters, typically 1-2 short sentences).',
       'Sound natural, polite, and like a real human being. Avoid robotic greetings or fluff. Do not include emojis.',
-      'Vehicle details missing: If the customer asks for a part or part price but vehicle model and/or year are missing, ask for them (e.g., "What model and year is your Nissan?"). Do not ask variant questions (engine size or transmission) until model and year are known.',
+      'Vehicle details missing: If the customer asks for a part or part price but vehicle details are missing, ask for the missing fields once in a short generic reply (e.g., "Please share the model and year."). Do not guess a model from casual words, and do not ask variant questions (engine size or transmission) until model and year are known.',
       'Part availability in stock: Reply exactly "Yes, we have it in stock." (or if price requested: "Yes, we have it in stock for <price>.").',
       'Part availability not found or out of stock: Reply exactly "Let me check and update you shortly."',
       'Multiple part variants: If partAvailability.status is ambiguous, ask the clarifying question (e.g., "Is yours 1.5L turbo or 2.0L non-turbo? Also automatic or manual?").',
