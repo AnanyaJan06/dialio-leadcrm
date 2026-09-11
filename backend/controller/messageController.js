@@ -27,10 +27,55 @@ const allowedImageTypes = new Map([
 const maxImageBytes = 5 * 1024 * 1024;
 const defaultGreetingReply = 'Hello';
 const unknownNumberGreeting = 'Hello! How can I help you find the right parts for your vehicle today?';
-const autoReplyCooldownMs = Math.max(0, Number(process.env.AI_AUTO_REPLY_COOLDOWN_MS) || 120000);
-const autoReplyEnabled = String(process.env.AI_AUTO_REPLY_WHEN_AGENT_OFFLINE || 'true').toLowerCase() !== 'false';
-const optOutPattern = /\b(stop|unsubscribe|cancel|end|quit|do not contact|don't contact|do not text|don't text)\b/i;
+const autoReplyCooldownMs = Math.max(0, Number(process.env.AI_AUTO_REPLY_COOLDOWN_MS) || 4000);
+const autoReplyEnabled = String(process.env.AI_AUTO_REPLY_ENABLED || process.env.AI_AUTO_REPLY_WHEN_AGENT_OFFLINE || 'true').toLowerCase() !== 'false';
+const autoReplyRequireOffline = String(process.env.AI_AUTO_REPLY_REQUIRE_OFFLINE || 'false').toLowerCase() === 'true';
+
+export const isOptOutMessage = (text = '') => {
+  const clean = String(text || '').trim().toLowerCase();
+  if (!clean) return false;
+
+  // Standalone TCPA stop keywords
+  if (/^(stop|unsubscribe|cancel|end|quit|stopall)$/i.test(clean)) return true;
+
+  // Phrases that indicate conversation context, NOT an opt-out
+  if (/\b(stop\s+by|end\s+of|quit\s+looking|cancel\s+(the\s+)?(order|quote|appointment|part|item))\b/i.test(clean)) {
+    return false;
+  }
+
+  // Explicit opt-out requests
+  if (/\b(stop\s+(texting|messaging|sending|contacting|calling)|do\s*not\s*(contact|text|message|call)|don'?t\s*(contact|text|message|call)|unsubscribe\s+me|remove\s+me|take\s+me\s+off(\s+your)?\s+list)\b/i.test(clean)) {
+    return true;
+  }
+
+  return false;
+};
+
+const optOutPattern = { test: (text) => isOptOutMessage(text) };
 const discountNegotiationReply = 'How much you would like to pay ?';
+
+const phoneLocks = new Map();
+
+const withPhoneLock = async (phone, fn) => {
+  const key = toStandardE164(phone) || String(phone || 'default');
+  const prevLock = phoneLocks.get(key) || Promise.resolve();
+
+  let release;
+  const currentLock = new Promise((resolve) => {
+    release = resolve;
+  });
+  phoneLocks.set(key, currentLock);
+
+  try {
+    await prevLock.catch(() => {});
+    return await fn();
+  } finally {
+    release();
+    if (phoneLocks.get(key) === currentLock) {
+      phoneLocks.delete(key);
+    }
+  }
+};
 
 const getEditDistance = (left = '', right = '') => {
   const a = String(left || '');
@@ -597,6 +642,28 @@ export const COMMON_MODELS_MAP = {
   jetta: 'volkswagen', golf: 'volkswagen', passat: 'volkswagen', tiguan: 'volkswagen', atlas: 'volkswagen', beetle: 'volkswagen',
   // GMC
   sierra: 'gmc', yukon: 'gmc', canyon: 'gmc', acadia: 'gmc', terrain: 'gmc', jimmy: 'gmc',
+  // Hyundai
+  elantra: 'hyundai', sonata: 'hyundai', 'santa fe': 'hyundai', santafe: 'hyundai', tucson: 'hyundai',
+  kona: 'hyundai', palisade: 'hyundai', accent: 'hyundai', genesis: 'hyundai', veloster: 'hyundai',
+  // Kia
+  optima: 'kia', forte: 'kia', sorento: 'kia', sportage: 'kia', telluride: 'kia', soul: 'kia',
+  rio: 'kia', sedona: 'kia', carnival: 'kia', stinger: 'kia',
+  // Mazda
+  'cx-5': 'mazda', cx5: 'mazda', 'cx-9': 'mazda', cx9: 'mazda', 'cx-30': 'mazda', cx30: 'mazda',
+  mazda3: 'mazda', mazda6: 'mazda', miata: 'mazda', tribute: 'mazda',
+  // BMW
+  '328i': 'bmw', '330i': 'bmw', '335i': 'bmw', '528i': 'bmw', '530i': 'bmw', '535i': 'bmw',
+  x3: 'bmw', x5: 'bmw', x1: 'bmw', m3: 'bmw', m5: 'bmw',
+  // Mercedes-Benz
+  c300: 'mercedes', e350: 'mercedes', glc: 'mercedes', gle: 'mercedes', cla: 'mercedes',
+  // Audi
+  a4: 'audi', a6: 'audi', q5: 'audi', q7: 'audi', a3: 'audi',
+  // Lexus
+  rx350: 'lexus', es350: 'lexus', is250: 'lexus', is350: 'lexus', gx460: 'lexus',
+  // Acura
+  mdx: 'acura', rdx: 'acura', tl: 'acura', tsx: 'acura', ilx: 'acura', tlx: 'acura',
+  // Infiniti
+  g35: 'infiniti', g37: 'infiniti', q50: 'infiniti', q60: 'infiniti', qx60: 'infiniti',
 };
 
 const VEHICLE_STOP_WORDS = new Set([
@@ -978,7 +1045,19 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
     detectedTopics.push('shipping');
   }
 
-  const partAvailability = await findAvailablePartsForLead(lead, recentMessages);
+  let partAvailability;
+  try {
+    partAvailability = await findAvailablePartsForLead(lead, recentMessages);
+  } catch (partErr) {
+    console.warn('findAvailablePartsForLead error:', partErr.message);
+    partAvailability = {
+      status: 'not_checked',
+      reason: 'Part catalog temporarily unavailable.',
+      matches: [],
+      isAmbiguous: false,
+      reply: 'Let me check and update you shortly.',
+    };
+  }
   const directReply = generateDirectAnswer({ lead, detectedTopics, partAvailability, recentMessages });
   const isDirectPriceOnlyReply = detectedTopics.length === 1
     && detectedTopics.includes('price')
@@ -1067,19 +1146,26 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
       input: JSON.stringify(aiInput),
     });
     const rawText = extractResponseText(response);
-    const parsed = safeJsonParse(rawText) || {};
+    const parsed = safeJsonParse(rawText);
 
-    draft = String(parsed.draft || '').trim().slice(0, 1600);
-    if (parsed.intent) intent = parsed.intent;
-    if (typeof parsed.safeToAutoSend === 'boolean') {
-      safeToAutoSend = parsed.safeToAutoSend;
+    if (parsed && typeof parsed === 'object') {
+      const candidate = parsed.draft ?? parsed.reply ?? parsed.message ?? parsed.answer ?? parsed.text ?? '';
+      draft = String(candidate).trim().slice(0, 1600);
+      if (parsed.intent) intent = parsed.intent;
+      if (typeof parsed.safeToAutoSend === 'boolean') {
+        safeToAutoSend = parsed.safeToAutoSend;
+      }
+      if (parsed.reason) reason = parsed.reason;
+    } else if (rawText && !rawText.trim().startsWith('{') && !rawText.trim().startsWith('[')) {
+      draft = rawText.trim().slice(0, 1600);
+      intent = 'answer_question';
+      safeToAutoSend = true;
     }
-    if (parsed.reason) reason = parsed.reason;
   } catch (error) {
     console.error('OpenAI generation error in generateAiReply:', error.message);
   }
 
-  // Fallback if OpenAI draft is empty or failed, but we have detected topics (price, warranty, mileage, etc.)
+  // 1. Fallback to direct catalog answer if OpenAI draft is empty or failed
   if (!draft && detectedTopics.length > 0) {
     const directReply = generateDirectAnswer({ lead, detectedTopics, partAvailability, recentMessages });
     if (directReply) {
@@ -1090,8 +1176,24 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
     }
   }
 
+  // 2. Fallback to part availability reply if still no draft
+  if (!draft && partAvailability?.reply) {
+    draft = partAvailability.reply;
+    intent = 'answer_question';
+    safeToAutoSend = true;
+    reason = partAvailability.reason || 'Catalog availability status';
+  }
+
+  // 3. Fallback to friendly auto-parts support assistant response so customer is never ignored
+  if (!draft && !isOptOutMessage(latestInbound)) {
+    draft = 'Hello! Let me check on that and update you shortly. Could you please share your vehicle year, make, and model?';
+    intent = 'answer_question';
+    safeToAutoSend = true;
+    reason = 'General auto-parts assistant fallback';
+  }
+
   // Safety check: if draft contains opt-out text or intent is opt_out
-  const isOptOut = optOutPattern.test(draft) || intent === 'opt_out' || (latestInbound && optOutPattern.test(latestInbound));
+  const isOptOut = isOptOutMessage(draft) || intent === 'opt_out' || (latestInbound && isOptOutMessage(latestInbound));
   if (isOptOut) {
     draft = '';
     safeToAutoSend = false;
@@ -1138,31 +1240,49 @@ const sendSimpleGreetingReply = async ({ lead, from, to, userId, reply = default
 
 const sendOfflineAgentAiReply = async ({ io, lead, from, to, inboundMessage, fallbackUserId }) => {
   if (!autoReplyEnabled
-    || !String(inboundMessage.body || '').trim()
-    || inboundMessage.mediaUrls?.length
-    || optOutPattern.test(inboundMessage.body || '')) return;
+    || !String(inboundMessage?.body || '').trim()
+    || inboundMessage?.mediaUrls?.length
+    || isOptOutMessage(inboundMessage?.body || '')) return;
 
   const assignedUserId = lead?.assignedTo?._id || lead?.assignedTo || fallbackUserId;
   if (assignedUserId) {
     const assignedUser = await User.findById(assignedUserId).select('isAiAutoReplyActive');
     if (assignedUser && assignedUser.isAiAutoReplyActive === false) return;
 
-    if (await isUserOnline(io, assignedUserId)) return;
+    if (autoReplyRequireOffline && (await isUserOnline(io, assignedUserId))) return;
   }
 
-  const cooldownSince = new Date(Date.now() - autoReplyCooldownMs);
   const filterConditions = [{ phoneNumber: from }];
   if (lead?._id) {
     filterConditions.push({ lead: lead._id });
   }
 
-  const recentAutoReply = await MessageLog.exists({
+  // Never drop a new customer inquiry because of previous replies:
+  // Check if an outbound reply has ALREADY been sent in response to this or a newer message
+  const lastOutbound = await MessageLog.findOne({
     $or: filterConditions,
     direction: 'outbound',
-    senderType: 'ai',
-    createdAt: { $gte: cooldownSince },
-  });
-  if (recentAutoReply) return;
+  }).sort({ createdAt: -1, _id: -1 }).select('createdAt').lean();
+
+  if (lastOutbound && inboundMessage?.createdAt && new Date(lastOutbound.createdAt) >= new Date(inboundMessage.createdAt)) {
+    return;
+  }
+
+  // Debounce rapid bursts from the customer (e.g. 2 rapid SMS in 1 second)
+  const debounceWindow = Math.min(autoReplyCooldownMs, 4000);
+  if (lastOutbound && debounceWindow > 0) {
+    const elapsed = Date.now() - new Date(lastOutbound.createdAt).getTime();
+    if (elapsed < debounceWindow) {
+      await new Promise((r) => setTimeout(r, debounceWindow - elapsed));
+      const freshOutbound = await MessageLog.findOne({
+        $or: filterConditions,
+        direction: 'outbound',
+      }).sort({ createdAt: -1, _id: -1 }).select('createdAt').lean();
+      if (freshOutbound && inboundMessage?.createdAt && new Date(freshOutbound.createdAt) >= new Date(inboundMessage.createdAt)) {
+        return;
+      }
+    }
+  }
 
   const messageQuery = lead?._id
     ? { lead: lead._id }
@@ -1174,10 +1294,10 @@ const sendOfflineAgentAiReply = async ({ io, lead, from, to, inboundMessage, fal
     .lean();
 
   const aiReply = await generateAiReply({ lead, recentMessages, automatic: true });
-  if (!aiReply.draft || !aiReply.safeToAutoSend || aiReply.intent === 'opt_out' || optOutPattern.test(aiReply.draft)) return;
+  if (!aiReply.draft || !aiReply.safeToAutoSend || aiReply.intent === 'opt_out' || isOptOutMessage(aiReply.draft)) return;
 
-  // The agent may have opened the CRM while OpenAI was preparing the response.
-  if (assignedUserId && await isUserOnline(io, assignedUserId)) return;
+  // If strict offline-only mode is active, check if the agent opened the CRM
+  if (autoReplyRequireOffline && assignedUserId && (await isUserOnline(io, assignedUserId))) return;
 
   const twilioMessage = await getTwilioClient().messages.create({
     from: to,
@@ -1687,137 +1807,123 @@ export const receiveMessage = async (req, res) => {
       });
     }
 
-    // Trigger AI reply when lead exists or when inbound message asks about price, warranty, mileage, order, etc.
-    try {
-      const detectedTopics = detectInquiryTopics(body);
-      const simpleGreetingReply = getSimpleGreetingReply(body);
+    // Respond to Twilio immediately so webhook never times out or triggers retries
+    const twiml = new twilio.twiml.MessagingResponse();
+    res.type('text/xml');
+    res.send(twiml.toString());
 
-      // Check if customer is replying to a shipping address inquiry
-      const lastOutboundMsg = await MessageLog.findOne({
-        ...(linkedLeadId ? { lead: linkedLeadId } : { phoneNumber: from }),
-        direction: 'outbound',
-      }).sort({ createdAt: -1, _id: -1 }).select('body').lean();
-      const isReplyingToShippingAddress = /shipping\s*address\?/i.test(lastOutboundMsg?.body || '');
-      if (isReplyingToShippingAddress && body.trim().length > 0 && !detectedTopics.includes('shipping')) {
-        detectedTopics.push('shipping');
-      }
+    // Process AI auto-reply asynchronously in background with per-phone serialization lock
+    setImmediate(async () => {
+      try {
+        await withPhoneLock(from, async () => {
+          const detectedTopics = detectInquiryTopics(body);
+          const simpleGreetingReply = getSimpleGreetingReply(body);
 
-      // Auto-save 5-digit zip code to lead if found
-      const zipMatch = body.match(/\b\d{5}\b/);
-      if (zipMatch && linkedLeadId && !lead?.zip) {
-        try {
-          await Lead.findByIdAndUpdate(linkedLeadId, { zip: zipMatch[0] });
-          if (lead) lead.zip = zipMatch[0];
-        } catch (zipErr) {
-          console.warn('Failed to update lead zip:', zipErr.message);
-        }
-      }
+          // Check if customer is replying to a shipping address inquiry
+          const lastOutboundMsg = await MessageLog.findOne({
+            ...(linkedLeadId ? { lead: linkedLeadId } : { phoneNumber: from }),
+            direction: 'outbound',
+          }).sort({ createdAt: -1, _id: -1 }).select('body').lean();
+          const isReplyingToShippingAddress = /shipping\s*address\?/i.test(lastOutboundMsg?.body || '');
+          if (isReplyingToShippingAddress && body.trim().length > 0 && !detectedTopics.includes('shipping')) {
+            detectedTopics.push('shipping');
+          }
 
-      // Update lead.partRequested if customer asks for a new part
-      const newPartInInbound = normalizePartKeyword(body);
-      if (newPartInInbound && linkedLeadId && lead && lead.partRequested !== newPartInInbound) {
-        try {
-          await Lead.findByIdAndUpdate(linkedLeadId, { partRequested: newPartInInbound });
-          lead.partRequested = newPartInInbound;
-          if (io) {
-            io.emit('lead-updated', {
-              leadId: String(linkedLeadId),
-              partRequested: newPartInInbound,
+          // Auto-save 5-digit zip code to lead if found
+          const zipMatch = body.match(/\b\d{5}\b/);
+          if (zipMatch && linkedLeadId && !lead?.zip) {
+            try {
+              await Lead.findByIdAndUpdate(linkedLeadId, { zip: zipMatch[0] });
+              if (lead) lead.zip = zipMatch[0];
+            } catch (zipErr) {
+              console.warn('Failed to update lead zip:', zipErr.message);
+            }
+          }
+
+          // Update lead.partRequested if customer asks for a new part
+          const newPartInInbound = normalizePartKeyword(body);
+          if (newPartInInbound && linkedLeadId && lead && lead.partRequested !== newPartInInbound) {
+            try {
+              await Lead.findByIdAndUpdate(linkedLeadId, { partRequested: newPartInInbound });
+              lead.partRequested = newPartInInbound;
+              if (io) {
+                io.emit('lead-updated', {
+                  leadId: String(linkedLeadId),
+                  partRequested: newPartInInbound,
+                });
+              }
+            } catch (partErr) {
+              console.warn('Failed to update lead partRequested:', partErr.message);
+            }
+          }
+
+          // Auto-save vehicle details (year, make, model) to lead if newly identified
+          if (linkedLeadId && lead) {
+            const vehicleDetails = extractVehicleDetails(lead, [messageLog]);
+            const updates = {};
+            if (vehicleDetails.make && !lead.make) updates.make = vehicleDetails.make;
+            if (vehicleDetails.model && !lead.model) updates.model = vehicleDetails.model;
+            if (vehicleDetails.year && !lead.year) updates.year = vehicleDetails.year;
+            if (Object.keys(updates).length > 0) {
+              try {
+                const updatedYear = updates.year || lead.year || '';
+                const updatedMake = updates.make || lead.make || '';
+                const updatedModel = updates.model || lead.model || '';
+                updates.yearMakeModel = `${updatedYear} ${updatedMake} ${updatedModel}`.trim();
+                await Lead.findByIdAndUpdate(linkedLeadId, updates);
+                Object.assign(lead, updates);
+                if (io) {
+                  io.emit('lead-updated', {
+                    leadId: String(linkedLeadId),
+                    ...updates,
+                  });
+                }
+              } catch (vehErr) {
+                console.warn('Failed to update lead vehicle details:', vehErr.message);
+              }
+            }
+          }
+
+          if (simpleGreetingReply) {
+            await sendSimpleGreetingReply({
+              lead,
+              from,
+              to,
+              userId: fallbackUserId,
+              reply: simpleGreetingReply,
             });
+            return;
           }
-        } catch (partErr) {
-          console.warn('Failed to update lead partRequested:', partErr.message);
-        }
-      }
 
-      // Auto-save vehicle details (year, make, model) to lead if newly identified
-      if (linkedLeadId && lead) {
-        const vehicleDetails = extractVehicleDetails(lead, [messageLog]);
-        const updates = {};
-        if (vehicleDetails.make && !lead.make) updates.make = vehicleDetails.make;
-        if (vehicleDetails.model && !lead.model) updates.model = vehicleDetails.model;
-        if (vehicleDetails.year && !lead.year) updates.year = vehicleDetails.year;
-        if (Object.keys(updates).length > 0) {
-          try {
-            const updatedYear = updates.year || lead.year || '';
-            const updatedMake = updates.make || lead.make || '';
-            const updatedModel = updates.model || lead.model || '';
-            updates.yearMakeModel = `${updatedYear} ${updatedMake} ${updatedModel}`.trim();
-            await Lead.findByIdAndUpdate(linkedLeadId, updates);
-            Object.assign(lead, updates);
-            if (io) {
-              io.emit('lead-updated', {
-                leadId: String(linkedLeadId),
-                ...updates,
-              });
+          // Update lead disposition to 'Ordered' if customer is placing/confirming an order
+          if (linkedLeadId && detectedTopics.includes('order') && lead?.disposition !== 'Ordered') {
+            try {
+              await Lead.findByIdAndUpdate(linkedLeadId, { disposition: 'Ordered' });
+              if (io) {
+                io.emit('lead-updated', {
+                  leadId: String(linkedLeadId),
+                  disposition: 'Ordered',
+                });
+              }
+            } catch (leadUpdateErr) {
+              console.warn('Failed to update lead disposition to Ordered:', leadUpdateErr.message);
             }
-          } catch (vehErr) {
-            console.warn('Failed to update lead vehicle details:', vehErr.message);
           }
-        }
-      }
 
-      const hasInquiry = detectedTopics.length > 0;
-
-      if (simpleGreetingReply) {
-        await sendSimpleGreetingReply({
-          lead,
-          from,
-          to,
-          userId: fallbackUserId,
-          reply: simpleGreetingReply,
-        });
-      } else {
-        // Update lead disposition to 'Ordered' if customer is placing/confirming an order
-        if (linkedLeadId && detectedTopics.includes('order') && lead?.disposition !== 'Ordered') {
-          try {
-            await Lead.findByIdAndUpdate(linkedLeadId, { disposition: 'Ordered' });
-            if (io) {
-              io.emit('lead-updated', {
-                leadId: String(linkedLeadId),
-                disposition: 'Ordered',
-              });
-            }
-          } catch (leadUpdateErr) {
-            console.warn('Failed to update lead disposition to Ordered:', leadUpdateErr.message);
-          }
-        }
-
-        if (lead || hasInquiry) {
+          // Trigger AI reply for all customer inquiries (both existing leads and new contacts)
           await sendOfflineAgentAiReply({
             io,
             lead,
             from,
             to,
             inboundMessage: messageLog,
-            fallbackUserId: assignedUserIds[0] || undefined,
+            fallbackUserId: assignedUserIds[0] || fallbackUserId || undefined,
           });
-        } else if (!linkedLeadId) {
-          const greetingAlreadySent = await MessageLog.exists({
-            phoneNumber: from,
-            direction: 'outbound',
-            body: unknownNumberGreeting,
-          });
-
-          if (!greetingAlreadySent) {
-            await sendSimpleGreetingReply({
-              from,
-              to,
-              userId: assignedUserIds[0] || undefined,
-              reply: unknownNumberGreeting,
-              senderType: 'system',
-            });
-          }
-        }
+        });
+      } catch (aiError) {
+        console.error('Background Inbound AI Reply Error:', aiError);
       }
-    } catch (aiError) {
-      // SMS reception must still succeed if OpenAI or Twilio's outbound request fails.
-      console.error('Inbound AI Reply Error:', aiError);
-    }
-
-    const twiml = new twilio.twiml.MessagingResponse();
-    res.type('text/xml');
-    res.send(twiml.toString());
+    });
   } catch (error) {
     console.error('Receive Message Error:', error);
     res.status(500).send('Internal Server Error');
