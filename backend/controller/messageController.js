@@ -333,8 +333,8 @@ export const generateDirectAnswer = ({ lead, detectedTopics, partAvailability, r
     return discountNegotiationReply;
   }
 
-  // Missing vehicle details or variant disambiguation takes highest priority
-  if ((partAvailability?.status === 'missing_details' || partAvailability?.status === 'ambiguous') && partAvailability?.clarifyingQuestion) {
+  // Missing vehicle details, missing year clarification, or variant disambiguation takes highest priority
+  if ((partAvailability?.status === 'missing_details' || partAvailability?.status === 'missing_year' || partAvailability?.status === 'ambiguous') && partAvailability?.clarifyingQuestion) {
     return partAvailability.clarifyingQuestion;
   }
 
@@ -697,109 +697,134 @@ export const extractVehicleDetails = (lead, recentMessages = []) => {
   const partInLatest = normalizePartKeyword(latestLower);
   let partRequested = partInLatest || '';
 
-  if (!partRequested) {
-    for (let i = inbounds.length - 1; i >= 0; i--) {
-      const p = normalizePartKeyword(inbounds[i].body || '');
-      if (p) {
-        partRequested = p;
-        break;
-      }
-    }
-  }
-  if (!partRequested && lead?.partRequested) {
-    partRequested = normalizePartKeyword(lead.partRequested) || lead.partRequested;
-  }
-
-  // 2. Year extraction
-  let year = '';
-  const yMatchLatest = latestLower.match(/\b(19\d\d|20[0-2]\d)\b/);
-  if (yMatchLatest) {
-    year = yMatchLatest[1];
-  } else {
-    for (let i = inbounds.length - 1; i >= 0; i--) {
-      const ym = (inbounds[i].body || '').match(/\b(19\d\d|20[0-2]\d)\b/);
-      if (ym) {
-        year = ym[1];
-        break;
-      }
-    }
-  }
-  if (!year && lead?.year) year = String(lead.year).trim();
-
-  // 3. Make extraction
-  let make = '';
+  // 2. Check make in latest message
+  let makeInLatest = '';
   for (const m of COMMON_MAKES) {
     if (new RegExp(`\\b${m}\\b`, 'i').test(latestLower)) {
-      make = m === 'chevy' ? 'chevy' : (m === 'vw' ? 'volkswagen' : m);
+      makeInLatest = m === 'chevy' ? 'chevy' : (m === 'vw' ? 'volkswagen' : m);
       break;
     }
   }
-  if (!make) {
+
+  // 3. Check model in latest message
+  let modelInLatest = '';
+  for (const [mName, mMake] of Object.entries(COMMON_MODELS_MAP)) {
+    if (new RegExp(`\\b${escapeRegex(mName).replace(/[-]/g, '[- ]?')}\\b`, 'i').test(latestLower)) {
+      modelInLatest = mName;
+      if (!makeInLatest) makeInLatest = mMake;
+      break;
+    }
+  }
+
+  // 4. Check year in latest message
+  const yMatchLatest = latestLower.match(/\b(19\d\d|20[0-2]\d)\b/);
+  const yearInLatest = yMatchLatest ? yMatchLatest[1] : '';
+
+  const hasNewVehicleInLatest = Boolean(makeInLatest || modelInLatest);
+
+  let make = makeInLatest;
+  let model = modelInLatest;
+  let year = yearInLatest;
+
+  if (!hasNewVehicleInLatest) {
+    // Look backwards chronologically across inbounds (newest to oldest)
     for (let i = inbounds.length - 1; i >= 0; i--) {
       const text = (inbounds[i].body || '').toLowerCase();
-      for (const m of COMMON_MAKES) {
-        if (new RegExp(`\\b${m}\\b`, 'i').test(text)) {
-          make = m === 'chevy' ? 'chevy' : (m === 'vw' ? 'volkswagen' : m);
+      if (!partRequested) {
+        const p = normalizePartKeyword(text);
+        if (p) partRequested = p;
+      }
+      if (!year) {
+        const ym = text.match(/\b(19\d\d|20[0-2]\d)\b/);
+        if (ym) year = ym[1];
+      }
+      if (!model) {
+        for (const [mName, mMake] of Object.entries(COMMON_MODELS_MAP)) {
+          if (new RegExp(`\\b${escapeRegex(mName).replace(/[-]/g, '[- ]?')}\\b`, 'i').test(text)) {
+            model = mName;
+            if (!make) make = mMake;
+            break;
+          }
+        }
+      }
+      if (!make) {
+        for (const m of COMMON_MAKES) {
+          if (new RegExp(`\\b${m}\\b`, 'i').test(text)) {
+            make = m === 'chevy' ? 'chevy' : (m === 'vw' ? 'volkswagen' : m);
+            break;
+          }
+        }
+      }
+    }
+
+    // If model still not found, search clean candidate words in inbounds (newest to oldest)
+    if (!model) {
+      for (let i = inbounds.length - 1; i >= 0; i--) {
+        const text = (inbounds[i].body || '').toLowerCase();
+        const words = text
+          .replace(/[^a-z0-9\s-]/g, ' ')
+          .split(/\s+/)
+          .filter(Boolean);
+
+        for (const word of words) {
+          if (word.length <= 1) continue;
+          if (/^\d{4}$/.test(word)) continue;
+          if (/^\d\.\d\s*l?$/i.test(word)) continue;
+          if (word === make || (make === 'chevy' && word === 'chevrolet') || (make === 'volkswagen' && word === 'vw')) continue;
+          if (COMMON_MAKES.includes(word)) continue;
+          if (VEHICLE_STOP_WORDS.has(word)) continue;
+          const isPart = Object.values(PART_KEYWORDS).some((aliases) =>
+            aliases.some((alias) => alias.replace(/[^a-z0-9]/g, '') === word)
+          );
+          if (isPart) continue;
+          if (['automatic', 'manual', 'cvt', 'turbo', 'hybrid', 'fwd', 'rwd', 'awd', '4wd', '4x4', 'at', 'mt'].includes(word)) continue;
+
+          model = word;
+          break;
+        }
+        if (model) break;
+      }
+    }
+
+    if (!partRequested && lead?.partRequested) {
+      partRequested = normalizePartKeyword(lead.partRequested) || lead.partRequested;
+    }
+    if (!year && lead?.year) year = String(lead.year).trim();
+    if (!make && lead?.make) make = String(lead.make).trim().toLowerCase();
+    if (!model && lead?.model) model = String(lead.model).trim().toLowerCase();
+  } else {
+    // New vehicle explicitly introduced in latest message
+    if (model && !make && COMMON_MODELS_MAP[model]) {
+      make = COMMON_MODELS_MAP[model];
+    }
+    if (!partRequested) {
+      for (let i = inbounds.length - 1; i >= 0; i--) {
+        const p = normalizePartKeyword(inbounds[i].body || '');
+        if (p) {
+          partRequested = p;
           break;
         }
       }
-      if (make) break;
     }
-  }
-  if (!make && lead?.make) make = String(lead.make).trim().toLowerCase();
-
-  // 4. Model extraction
-  let model = '';
-
-  // Check known models map across inbound messages (newest to oldest)
-  for (let i = inbounds.length - 1; i >= 0; i--) {
-    const text = (inbounds[i].body || '').toLowerCase();
-    for (const [mName, mMake] of Object.entries(COMMON_MODELS_MAP)) {
-      if (new RegExp(`\\b${escapeRegex(mName).replace(/[-]/g, '[- ]?')}\\b`, 'i').test(text)) {
-        model = mName;
-        if (!make) make = mMake;
-        break;
-      }
-    }
-    if (model) break;
-  }
-
-  // If model still not found, search clean candidate words in inbounds (newest to oldest)
-  if (!model) {
-    for (let i = inbounds.length - 1; i >= 0; i--) {
-      const text = (inbounds[i].body || '').toLowerCase();
-      const words = text
-        .replace(/[^a-z0-9\s-]/g, ' ')
-        .split(/\s+/)
-        .filter(Boolean);
-
-      for (const word of words) {
-        if (word.length <= 1) continue;
-        if (/^\d{4}$/.test(word)) continue;
-        if (/^\d\.\d\s*l?$/i.test(word)) continue;
-        if (word === make || (make === 'chevy' && word === 'chevrolet') || (make === 'volkswagen' && word === 'vw')) continue;
-        if (COMMON_MAKES.includes(word)) continue;
-        if (VEHICLE_STOP_WORDS.has(word)) continue;
-        const isPart = Object.values(PART_KEYWORDS).some((aliases) =>
-          aliases.some((alias) => alias.replace(/[^a-z0-9]/g, '') === word)
-        );
-        if (isPart) continue;
-        if (['automatic', 'manual', 'cvt', 'turbo', 'hybrid', 'fwd', 'rwd', 'awd', '4wd', '4x4', 'at', 'mt'].includes(word)) continue;
-
-        model = word;
-        break;
-      }
-      if (model) break;
+    if (!partRequested && lead?.partRequested) {
+      partRequested = normalizePartKeyword(lead.partRequested) || lead.partRequested;
     }
   }
 
-  if (!model && lead?.model) model = String(lead.model).trim().toLowerCase();
+  // Model-Make consistency check: if model's known make contradicts make, resolve accurately
+  if (model && COMMON_MODELS_MAP[model] && make && COMMON_MODELS_MAP[model] !== make) {
+    if (makeInLatest && !modelInLatest) {
+      model = '';
+    } else if (modelInLatest && !makeInLatest) {
+      make = COMMON_MODELS_MAP[model];
+    }
+  }
 
   // Determine relevant specs text:
-  // If a new part was asked in the latest message, only use specs from the latest message.
+  // If a new vehicle or part was asked in the latest message, only use specs from the latest message.
   // If a follow-up inquiry (e.g., "how much?"), use specs since this part was requested.
   let relevantSpecsText = latestLower;
-  if (!partInLatest) {
+  if (!partInLatest && !hasNewVehicleInLatest) {
     let partSwitchIndex = -1;
     for (let i = inbounds.length - 1; i >= 0; i--) {
       if (normalizePartKeyword(inbounds[i].body || '') === partRequested) {
@@ -821,6 +846,7 @@ export const extractVehicleDetails = (lead, recentMessages = []) => {
     partRequested: normalizePartKeyword(partRequested) || partRequested,
     inboundText: relevantSpecsText,
     isNewPartAsked: Boolean(partInLatest),
+    hasNewVehicleInLatest,
   };
 };
 
@@ -887,34 +913,40 @@ const analyzePartVariants = (matchingTitles = [], userQuery = '') => {
 export const findAvailablePartsForLead = async (lead, recentMessages = []) => {
   const details = extractVehicleDetails(lead, recentMessages);
 
-  // If a part is requested, check if essential vehicle details (year, make, model) are missing
+  // If a part is requested, check if essential vehicle details (make, model) are missing
   if (details.partRequested) {
-    const missingYear = !details.year;
-    const missingModel = !details.model;
     const missingMake = !details.make;
+    const missingModel = !details.model;
 
-    if (missingYear || missingModel || missingMake) {
-      const missingFields = [];
-      if (missingYear) missingFields.push('year');
-      if (missingMake) missingFields.push('make');
-      if (missingModel) missingFields.push('model');
-
-      let clarifyingQuestion = '';
-      if (missingFields.length === 3) {
-        clarifyingQuestion = 'Please share the year, make, and model.';
-      } else if (missingYear && missingModel && !missingMake) {
-        clarifyingQuestion = 'Please share the model and year.';
-      } else if (missingMake && missingModel && !missingYear) {
-        clarifyingQuestion = 'Please share the make and model.';
-      } else if (missingMake && missingYear && !missingModel) {
-        clarifyingQuestion = 'Please share the make and year.';
-      } else {
-        clarifyingQuestion = `Please share the ${missingFields[0]}.`;
-      }
-
+    if (missingMake && missingModel) {
+      const clarifyingQuestion = 'Please share the year, make, and model.';
       return {
         status: 'missing_details',
-        reason: 'Missing vehicle model or year to search parts catalog.',
+        reason: 'Missing vehicle make and model.',
+        matches: [],
+        isAmbiguous: true,
+        clarifyingQuestion,
+        reply: clarifyingQuestion,
+      };
+    }
+
+    if (missingModel && !missingMake) {
+      const clarifyingQuestion = 'Please share the model and year.';
+      return {
+        status: 'missing_details',
+        reason: 'Missing vehicle model and year.',
+        matches: [],
+        isAmbiguous: true,
+        clarifyingQuestion,
+        reply: clarifyingQuestion,
+      };
+    }
+
+    if (missingMake && !missingModel) {
+      const clarifyingQuestion = 'Please share the make and year.';
+      return {
+        status: 'missing_details',
+        reason: 'Missing vehicle make.',
         matches: [],
         isAmbiguous: true,
         clarifyingQuestion,
@@ -926,23 +958,44 @@ export const findAvailablePartsForLead = async (lead, recentMessages = []) => {
   const conditions = [];
 
   if (details.year) {
-    conditions.push({ title: { $regex: details.year, $options: 'i' } });
+    conditions.push({
+      $or: [
+        { year: String(details.year).trim() },
+        { title: { $regex: details.year, $options: 'i' } },
+      ],
+    });
   }
 
   if (details.make) {
     const makePattern = details.make === 'chevy' ? '(chevy|chevrolet)' : details.make;
-    conditions.push({ title: { $regex: makePattern, $options: 'i' } });
+    conditions.push({
+      $or: [
+        { make: { $regex: `^${makePattern}$`, $options: 'i' } },
+        { title: { $regex: makePattern, $options: 'i' } },
+      ],
+    });
   }
 
   if (details.model) {
-    conditions.push({ title: { $regex: details.model, $options: 'i' } });
+    conditions.push({
+      $or: [
+        { model: { $regex: `^${escapeRegex(details.model)}$`, $options: 'i' } },
+        { title: { $regex: escapeRegex(details.model), $options: 'i' } },
+      ],
+    });
   }
 
   if (details.partRequested) {
     const partRoot = details.partRequested === 'transmission'
       ? '(transmission|\\btrans\\b)'
       : escapeRegex(details.partRequested);
-    conditions.push({ title: { $regex: partRoot, $options: 'i' } });
+    conditions.push({
+      $or: [
+        { part: { $regex: partRoot, $options: 'i' } },
+        { productType: { $regex: partRoot, $options: 'i' } },
+        { title: { $regex: partRoot, $options: 'i' } },
+      ],
+    });
   }
 
   // Only apply transmission specs if active part is transmission
@@ -1002,6 +1055,50 @@ export const findAvailablePartsForLead = async (lead, recentMessages = []) => {
       matches: matches.map(formatPartForAi),
       isAmbiguous: false,
       reply: 'Let me check and update you shortly.',
+    };
+  }
+
+  // When year was not specified by customer, but parts exist in stock
+  if (!details.year) {
+    const distinctYears = [...new Set(inStockMatches.map((m) => {
+      if (m.year) return String(m.year).trim();
+      const ym = String(m.title || '').match(/\b(19\d\d|20[0-2]\d)\b/);
+      return ym ? ym[1] : null;
+    }).filter(Boolean))].sort();
+
+    const inbounds = getInboundMessagesChronological(recentMessages);
+    const latestInbound = inbounds.length ? (inbounds[inbounds.length - 1]?.body || '') : '';
+    const detectedTopics = detectInquiryTopics(details.inboundText || latestInbound);
+    const isPriceInquiry = detectedTopics.includes('price');
+    const firstMatch = inStockMatches[0];
+    const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
+    const makeTitle = capitalize(details.make);
+    const modelTitle = capitalize(details.model);
+    const partTitle = details.partRequested || 'part';
+
+    let clarifyingQuestion = '';
+    if (distinctYears.length === 1) {
+      const yr = distinctYears[0];
+      if (isPriceInquiry && firstMatch.price) {
+        clarifyingQuestion = `We have a ${yr} ${makeTitle} ${modelTitle} ${partTitle} in stock for $${Number(firstMatch.price).toLocaleString()}. What year is yours?`;
+      } else {
+        clarifyingQuestion = `Yes, we have a ${yr} ${makeTitle} ${modelTitle} ${partTitle} in stock. What year is yours?`;
+      }
+    } else {
+      if (isPriceInquiry && firstMatch.price) {
+        clarifyingQuestion = `Yes, we have them in stock starting at $${Number(firstMatch.price).toLocaleString()}. What year is your ${modelTitle}?`;
+      } else {
+        clarifyingQuestion = `Yes, we have it in stock. What year is your ${modelTitle}?`;
+      }
+    }
+
+    return {
+      status: 'missing_year',
+      reason: 'In-stock matching part found; clarifying customer vehicle year.',
+      matches: inStockMatches.map(formatPartForAi),
+      isAmbiguous: true,
+      clarifyingQuestion,
+      reply: clarifyingQuestion,
     };
   }
 
@@ -1073,6 +1170,7 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
   // Return direct answer immediately for missing details, part availability, price, or shipping inquiries (short, human-like)
   const isDirectReplyReady = directReply && (
     partAvailability?.status === 'missing_details' ||
+    partAvailability?.status === 'missing_year' ||
     isDirectPriceOnlyReply ||
     isDirectShippingOnlyReply ||
     isDirectDiscountReply ||
@@ -1082,7 +1180,7 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
   if (isDirectReplyReady) {
     return {
       draft: directReply,
-      intent: partAvailability?.status === 'missing_details' ? 'qualify_lead' : 'answer_question',
+      intent: (partAvailability?.status === 'missing_details' || partAvailability?.status === 'missing_year') ? 'qualify_lead' : 'answer_question',
       safeToAutoSend: true,
       reason: isDirectDiscountReply ? 'Discount negotiation answer' : (isDirectShippingOnlyReply ? 'Shipping inquiry answer' : (partAvailability.reason || 'Part availability / price answer')),
       partAvailability,
@@ -1861,12 +1959,18 @@ export const receiveMessage = async (req, res) => {
           if (linkedLeadId && lead) {
             const vehicleDetails = extractVehicleDetails(lead, [messageLog]);
             const updates = {};
-            if (vehicleDetails.make && !lead.make) updates.make = vehicleDetails.make;
-            if (vehicleDetails.model && !lead.model) updates.model = vehicleDetails.model;
-            if (vehicleDetails.year && !lead.year) updates.year = vehicleDetails.year;
+            if (vehicleDetails.hasNewVehicleInLatest) {
+              if (vehicleDetails.make) updates.make = vehicleDetails.make;
+              if (vehicleDetails.model) updates.model = vehicleDetails.model;
+              updates.year = vehicleDetails.year || '';
+            } else {
+              if (vehicleDetails.make && !lead.make) updates.make = vehicleDetails.make;
+              if (vehicleDetails.model && !lead.model) updates.model = vehicleDetails.model;
+              if (vehicleDetails.year && !lead.year) updates.year = vehicleDetails.year;
+            }
             if (Object.keys(updates).length > 0) {
               try {
-                const updatedYear = updates.year || lead.year || '';
+                const updatedYear = updates.year !== undefined ? updates.year : (lead.year || '');
                 const updatedMake = updates.make || lead.make || '';
                 const updatedModel = updates.model || lead.model || '';
                 updates.yearMakeModel = `${updatedYear} ${updatedMake} ${updatedModel}`.trim();
