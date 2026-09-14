@@ -53,6 +53,89 @@ export const isOptOutMessage = (text = '') => {
 
 const optOutPattern = { test: (text) => isOptOutMessage(text) };
 const discountNegotiationReply = 'How much you would like to pay ?';
+const ACK_ONLY_PATTERN = /^(ok|okay|k|kk|sure|yes|yeah|yep|correct|right|alright|thanks|thank you|thank u)\.?$/i;
+
+const isAcknowledgementOnly = (text = '') => ACK_ONLY_PATTERN.test(String(text || '').trim().toLowerCase());
+
+const isOrderConfirmationFollowup = (latestOutbound = '', inbound = '') => (
+  /representative will contact you soon for confirming the order/i.test(String(latestOutbound || '')) &&
+  isAcknowledgementOnly(inbound)
+);
+
+const MODEL_ALIASES = {
+  altime: 'altima',
+  altma: 'altima',
+  ultima: 'altima',
+  seqio: 'sequoia',
+  sequa: 'sequoia',
+  sequo: 'sequoia',
+  sequioa: 'sequoia',
+  sequoya: 'sequoia',
+  sequia: 'sequoia',
+};
+
+const tokenizeVehicleText = (text = '') => String(text || '')
+  .toLowerCase()
+  .replace(/[^a-z0-9\s-]/g, ' ')
+  .split(/\s+/)
+  .filter(Boolean);
+
+const getModelFromToken = (token = '') => {
+  const normalized = String(token || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+  if (!normalized) return '';
+  if (COMMON_MODELS_MAP[normalized]) return normalized;
+  if (MODEL_ALIASES[normalized]) return MODEL_ALIASES[normalized];
+
+  let bestModel = '';
+  let bestDistance = Infinity;
+  for (const modelName of Object.keys(COMMON_MODELS_MAP)) {
+    const compactModel = modelName.replace(/[^a-z0-9]/g, '');
+    const compactToken = normalized.replace(/[^a-z0-9]/g, '');
+    const maxDistance = compactModel.length <= 5 ? 1 : 2;
+    if (Math.abs(compactModel.length - compactToken.length) > maxDistance) continue;
+    const distance = getEditDistance(compactToken, compactModel);
+    if (distance <= maxDistance && distance < bestDistance) {
+      bestModel = modelName;
+      bestDistance = distance;
+    }
+  }
+
+  return bestModel;
+};
+
+const getModelFromText = (text = '') => {
+  const lower = String(text || '').toLowerCase();
+  for (const [modelName, modelMake] of Object.entries(COMMON_MODELS_MAP)) {
+    if (new RegExp(`\\b${escapeRegex(modelName).replace(/[-]/g, '[- ]?')}\\b`, 'i').test(lower)) {
+      return { model: modelName, make: modelMake, corrected: false };
+    }
+  }
+
+  for (const token of tokenizeVehicleText(lower)) {
+    if (VEHICLE_STOP_WORDS.has(token)) continue;
+    if (COMMON_MAKES.includes(token)) continue;
+    if (/^\d+$/.test(token) || /^\d\.\d\s*l?$/i.test(token)) continue;
+    const model = getModelFromToken(token);
+    if (model) return { model, make: COMMON_MODELS_MAP[model], corrected: model !== token };
+  }
+
+  return { model: '', make: '', corrected: false };
+};
+
+const buildVehicleConfirmationQuestion = ({ year = '', make = '', model = '', part = '' } = {}) => {
+  const words = [year, make, model, part].filter(Boolean);
+  if (words.length < 2) return '';
+  return `Did you mean ${words.join(' ')}?`;
+};
+
+const getLatestConfirmedVehicleText = (messages = []) => {
+  const latestInbound = getLatestInboundMessage(messages);
+  if (!isAcknowledgementOnly(latestInbound)) return '';
+
+  const latestOutbound = getLatestOutboundMessage(messages);
+  const match = String(latestOutbound || '').match(/^Did you mean\s+(.+?)\?$/i);
+  return match ? match[1].trim() : '';
+};
 
 const phoneLocks = new Map();
 
@@ -334,7 +417,7 @@ export const generateDirectAnswer = ({ lead, detectedTopics, partAvailability, r
   }
 
   // Missing vehicle details, missing year clarification, or variant disambiguation takes highest priority
-  if ((partAvailability?.status === 'missing_details' || partAvailability?.status === 'missing_year' || partAvailability?.status === 'ambiguous') && partAvailability?.clarifyingQuestion) {
+  if ((partAvailability?.status === 'missing_details' || partAvailability?.status === 'missing_year' || partAvailability?.status === 'confirm_vehicle' || partAvailability?.status === 'ambiguous') && partAvailability?.clarifyingQuestion) {
     return partAvailability.clarifyingQuestion;
   }
 
@@ -357,7 +440,7 @@ export const generateDirectAnswer = ({ lead, detectedTopics, partAvailability, r
   const inbounds = (Array.isArray(recentMessages) ? recentMessages : []).filter((m) => m.direction === 'inbound');
   const allInboundText = inbounds.map((m) => m.body || '').join(' ');
   const latestInbound = getLatestInboundMessage(recentMessages);
-  const hasProvidedAddress = Boolean(lead?.zip) || hasAddressDetails(allInboundText) || (wasAskedAddress && latestInbound.trim().length > 0);
+  const hasProvidedAddress = Boolean(lead?.zip) || hasAddressDetails(allInboundText) || (wasAskedAddress && hasAddressDetails(latestInbound));
 
   const isShippingOnlyInquiry = detectedTopics.length === 1 && detectedTopics.includes('shipping');
   if (isShippingOnlyInquiry) {
@@ -609,7 +692,7 @@ export const COMMON_MAKES = [
   'acura', 'audi', 'bmw', 'buick', 'cadillac', 'chevrolet', 'chevy', 'chrysler',
   'dodge', 'ford', 'gmc', 'honda', 'hyundai', 'infiniti', 'jeep', 'kia',
   'lexus', 'lincoln', 'mazda', 'mercedes', 'mercedes-benz', 'mercury', 'mini',
-  'mitsubishi', 'nissan', 'pontiac', 'porsche', 'ram', 'subaru', 'toyota',
+  'mitsubishi', 'nissan', 'pontiac', 'porsche', 'ram', 'saab', 'subaru', 'toyota',
   'volkswagen', 'vw', 'volvo'
 ];
 
@@ -691,7 +774,9 @@ export const normalizePartKeyword = (word = '') => {
 export const extractVehicleDetails = (lead, recentMessages = []) => {
   const inbounds = getInboundMessagesChronological(recentMessages);
   const latestInbound = inbounds.length ? (inbounds[inbounds.length - 1]?.body || '') : '';
-  const latestLower = latestInbound.toLowerCase();
+  const confirmedVehicleText = getLatestConfirmedVehicleText(recentMessages);
+  const latestTextForVehicle = confirmedVehicleText || latestInbound;
+  const latestLower = latestTextForVehicle.toLowerCase();
 
   // 1. Check if the latest message specifically mentions a new part
   const partInLatest = normalizePartKeyword(latestLower);
@@ -706,15 +791,11 @@ export const extractVehicleDetails = (lead, recentMessages = []) => {
     }
   }
 
-  // 3. Check model in latest message
-  let modelInLatest = '';
-  for (const [mName, mMake] of Object.entries(COMMON_MODELS_MAP)) {
-    if (new RegExp(`\\b${escapeRegex(mName).replace(/[-]/g, '[- ]?')}\\b`, 'i').test(latestLower)) {
-      modelInLatest = mName;
-      if (!makeInLatest) makeInLatest = mMake;
-      break;
-    }
-  }
+  // 3. Check model in latest message, including common typos
+  const latestModelMatch = getModelFromText(latestLower);
+  let modelInLatest = latestModelMatch.model;
+  let modelWasCorrected = latestModelMatch.corrected;
+  if (modelInLatest && !makeInLatest) makeInLatest = latestModelMatch.make;
 
   // 4. Check year in latest message
   const yMatchLatest = latestLower.match(/\b(19\d\d|20[0-2]\d)\b/);
@@ -739,12 +820,11 @@ export const extractVehicleDetails = (lead, recentMessages = []) => {
         if (ym) year = ym[1];
       }
       if (!model) {
-        for (const [mName, mMake] of Object.entries(COMMON_MODELS_MAP)) {
-          if (new RegExp(`\\b${escapeRegex(mName).replace(/[-]/g, '[- ]?')}\\b`, 'i').test(text)) {
-            model = mName;
-            if (!make) make = mMake;
-            break;
-          }
+        const modelMatch = getModelFromText(text);
+        if (modelMatch.model) {
+          model = modelMatch.model;
+          if (!make) make = modelMatch.make;
+          modelWasCorrected = modelWasCorrected || modelMatch.corrected;
         }
       }
       if (!make) {
@@ -768,7 +848,7 @@ export const extractVehicleDetails = (lead, recentMessages = []) => {
 
         for (const word of words) {
           if (word.length <= 1) continue;
-          if (/^\d{4}$/.test(word)) continue;
+          if (/^\d+$/.test(word)) continue;
           if (/^\d\.\d\s*l?$/i.test(word)) continue;
           if (word === make || (make === 'chevy' && word === 'chevrolet') || (make === 'volkswagen' && word === 'vw')) continue;
           if (COMMON_MAKES.includes(word)) continue;
@@ -847,6 +927,7 @@ export const extractVehicleDetails = (lead, recentMessages = []) => {
     inboundText: relevantSpecsText,
     isNewPartAsked: Boolean(partInLatest),
     hasNewVehicleInLatest,
+    modelWasCorrected,
   };
 };
 
@@ -912,6 +993,36 @@ const analyzePartVariants = (matchingTitles = [], userQuery = '') => {
 
 export const findAvailablePartsForLead = async (lead, recentMessages = []) => {
   const details = extractVehicleDetails(lead, recentMessages);
+
+  if (details.modelWasCorrected && details.hasNewVehicleInLatest) {
+    const clarifyingQuestion = buildVehicleConfirmationQuestion({
+      year: details.year,
+      make: details.make,
+      model: details.model,
+      part: details.partRequested,
+    });
+    if (clarifyingQuestion) {
+      return {
+        status: 'confirm_vehicle',
+        reason: 'Customer vehicle model looked misspelled and was corrected.',
+        matches: [],
+        isAmbiguous: true,
+        clarifyingQuestion,
+        reply: clarifyingQuestion,
+      };
+    }
+  }
+
+  if (!details.partRequested && (details.year || details.make || details.model)) {
+    return {
+      status: 'missing_details',
+      reason: 'Vehicle was provided without a requested part.',
+      matches: [],
+      isAmbiguous: true,
+      clarifyingQuestion: 'Which part do you need?',
+      reply: 'Which part do you need?',
+    };
+  }
 
   // If a part is requested, check if essential vehicle details (make, model) are missing
   if (details.partRequested) {
@@ -1131,14 +1242,28 @@ export const findAvailablePartsForLead = async (lead, recentMessages = []) => {
 export const generateAiReply = async ({ lead, recentMessages = [], instruction = 'reply_to_latest_message', automatic = false }) => {
   const latestInbound = getLatestInboundMessage(recentMessages);
   const latestOutbound = getLatestOutboundMessage(recentMessages);
+  const confirmedVehicleText = getLatestConfirmedVehicleText(recentMessages);
   const wasAskedShippingAddress = /shipping\s*address\?/i.test(latestOutbound);
+  const hasShippingAddressReply = wasAskedShippingAddress && hasAddressDetails(latestInbound);
+  const isAnsweringVariantQuestion = /\b(Is yours|automatic or manual|2WD|4WD|AWD)\b/i.test(latestOutbound);
+
+  if (isOrderConfirmationFollowup(latestOutbound, latestInbound) || (isAcknowledgementOnly(latestInbound) && !confirmedVehicleText && !hasShippingAddressReply && !isAnsweringVariantQuestion)) {
+    return {
+      draft: '',
+      intent: 'unknown',
+      safeToAutoSend: false,
+      reason: 'Acknowledgement-only message; no auto-reply needed.',
+      partAvailability: { status: 'not_checked', reason: 'Acknowledgement-only message.', matches: [], isAmbiguous: false },
+      suggestedMediaUrls: [],
+    };
+  }
 
   const textToAnalyze = [instruction !== 'reply_to_latest_message' && instruction !== 'follow_up' ? instruction : '', latestInbound]
     .filter(Boolean)
     .join(' ');
   const detectedTopics = detectInquiryTopics(textToAnalyze || latestInbound || instruction);
 
-  if (wasAskedShippingAddress && latestInbound.trim().length > 0 && !detectedTopics.includes('shipping')) {
+  if (wasAskedShippingAddress && hasAddressDetails(latestInbound) && !detectedTopics.includes('shipping')) {
     detectedTopics.push('shipping');
   }
 
@@ -1171,6 +1296,7 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
   const isDirectReplyReady = directReply && (
     partAvailability?.status === 'missing_details' ||
     partAvailability?.status === 'missing_year' ||
+    partAvailability?.status === 'confirm_vehicle' ||
     isDirectPriceOnlyReply ||
     isDirectShippingOnlyReply ||
     isDirectDiscountReply ||
@@ -1180,7 +1306,7 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
   if (isDirectReplyReady) {
     return {
       draft: directReply,
-      intent: (partAvailability?.status === 'missing_details' || partAvailability?.status === 'missing_year') ? 'qualify_lead' : 'answer_question',
+      intent: (partAvailability?.status === 'missing_details' || partAvailability?.status === 'missing_year' || partAvailability?.status === 'confirm_vehicle') ? 'qualify_lead' : 'answer_question',
       safeToAutoSend: true,
       reason: isDirectDiscountReply ? 'Discount negotiation answer' : (isDirectShippingOnlyReply ? 'Shipping inquiry answer' : (partAvailability.reason || 'Part availability / price answer')),
       partAvailability,
@@ -1923,7 +2049,7 @@ export const receiveMessage = async (req, res) => {
             direction: 'outbound',
           }).sort({ createdAt: -1, _id: -1 }).select('body').lean();
           const isReplyingToShippingAddress = /shipping\s*address\?/i.test(lastOutboundMsg?.body || '');
-          if (isReplyingToShippingAddress && body.trim().length > 0 && !detectedTopics.includes('shipping')) {
+          if (isReplyingToShippingAddress && hasAddressDetails(body) && !detectedTopics.includes('shipping')) {
             detectedTopics.push('shipping');
           }
 
@@ -1989,6 +2115,16 @@ export const receiveMessage = async (req, res) => {
           }
 
           if (simpleGreetingReply) {
+            const newerInbound = await MessageLog.findOne({
+              ...(linkedLeadId ? { lead: linkedLeadId } : { phoneNumber: from }),
+              direction: 'inbound',
+              createdAt: { $gt: messageLog.createdAt },
+            }).select('_id body').lean();
+
+            if (newerInbound && detectInquiryTopics(newerInbound.body).length > 0) {
+              return;
+            }
+
             await sendSimpleGreetingReply({
               lead,
               from,
