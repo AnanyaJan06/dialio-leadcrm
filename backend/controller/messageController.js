@@ -774,6 +774,19 @@ export const normalizePartKeyword = (word = '') => {
 export const extractVehicleDetails = (lead, recentMessages = []) => {
   const inbounds = getInboundMessagesChronological(recentMessages);
   const latestInbound = inbounds.length ? (inbounds[inbounds.length - 1]?.body || '') : '';
+  const latestOutbound = getLatestOutboundMessage(recentMessages);
+  if (/shipping\s*address\?/i.test(latestOutbound) && hasAddressDetails(latestInbound)) {
+    return {
+      make: '',
+      model: '',
+      year: '',
+      partRequested: '',
+      inboundText: String(latestInbound || '').toLowerCase(),
+      isNewPartAsked: false,
+      hasNewVehicleInLatest: false,
+      modelWasCorrected: false,
+    };
+  }
   const confirmedVehicleText = getLatestConfirmedVehicleText(recentMessages);
   const latestTextForVehicle = confirmedVehicleText || latestInbound;
   const latestLower = latestTextForVehicle.toLowerCase();
@@ -1265,6 +1278,17 @@ export const generateAiReply = async ({ lead, recentMessages = [], instruction =
 
   if (wasAskedShippingAddress && hasAddressDetails(latestInbound) && !detectedTopics.includes('shipping')) {
     detectedTopics.push('shipping');
+  }
+
+  if (hasShippingAddressReply) {
+    return {
+      draft: 'Shipping takes about 7-14 days.',
+      intent: 'answer_question',
+      safeToAutoSend: true,
+      reason: 'Shipping address received.',
+      partAvailability: { status: 'not_checked', reason: 'Shipping address received.', matches: [], isAmbiguous: false },
+      suggestedMediaUrls: [],
+    };
   }
 
   let partAvailability;
@@ -2082,7 +2106,7 @@ export const receiveMessage = async (req, res) => {
           }
 
           // Auto-save vehicle details (year, make, model) to lead if newly identified
-          if (linkedLeadId && lead) {
+          if (linkedLeadId && lead && !(isReplyingToShippingAddress && hasAddressDetails(body))) {
             const vehicleDetails = extractVehicleDetails(lead, [messageLog]);
             const updates = {};
             if (vehicleDetails.hasNewVehicleInLatest) {
