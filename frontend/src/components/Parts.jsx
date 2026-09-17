@@ -105,7 +105,36 @@ function PartsTableSkeleton() {
   );
 }
 
-function Parts() {
+function Parts({ currentUser: propCurrentUser = null }) {
+  const [currentUser, setCurrentUser] = useState(propCurrentUser);
+
+  useEffect(() => {
+    if (propCurrentUser) {
+      setCurrentUser(propCurrentUser);
+    }
+  }, [propCurrentUser]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      fetch(`${BACKEND_URL}/api/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && (data._id || data.id || data.role)) {
+            setCurrentUser(data);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [currentUser]);
+
+  const isAdmin = (propCurrentUser?.role || currentUser?.role) === 'admin';
+
   const [parts, setParts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -357,6 +386,10 @@ function Parts() {
 
   // Open Modal for Edit
   const handleOpenEditModal = (part) => {
+    if (!isAdmin) {
+      showErrorToast('Only administrators can edit parts');
+      return;
+    }
     setEditingPart(part);
     const existingTitle = part.title || [part.year, part.make, part.model, part.trim, part.part].filter(Boolean).join(' ') || part.part || '';
     setForm({
@@ -419,6 +452,10 @@ function Parts() {
     try {
       setSaving(true);
       const isEditing = Boolean(editingPart && editingPart._id);
+      if (isEditing && !isAdmin) {
+        showErrorToast('Only administrators can edit parts');
+        return;
+      }
       const url = isEditing
         ? `${BACKEND_URL}/api/parts/${editingPart._id}`
         : `${BACKEND_URL}/api/parts`;
@@ -847,15 +884,17 @@ function Parts() {
                       {/* Actions */}
                       <td className="whitespace-nowrap py-3.5 pl-3 pr-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Edit Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(part)}
-                            title="Edit part"
-                            className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-800 hover:text-emerald-300"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
+                          {/* Edit Button (Admin Only) */}
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditModal(part)}
+                              title="Edit part"
+                              className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-800 hover:text-emerald-300"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                          )}
 
                           {/* Delete Button */}
                           <button

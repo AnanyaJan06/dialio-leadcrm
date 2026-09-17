@@ -216,6 +216,10 @@ export const getParts = async (req, res) => {
 
 export const updatePart = async (req, res) => {
   try {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
     const normalized = normalizePartPayload(req.body, req.user?.id);
     const validationError = validatePartPayload(normalized);
     if (validationError) return res.status(400).json({ message: validationError });
