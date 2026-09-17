@@ -58,6 +58,11 @@ const partSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    mileage: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     productType: {
       type: String,
       default: '',

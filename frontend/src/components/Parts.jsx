@@ -5,6 +5,7 @@ import {
   FileSpreadsheet,
   ChevronLeft,
   ChevronRight,
+  Gauge,
   PackageCheck,
   PackageX,
   Pencil,
@@ -34,6 +35,7 @@ const emptyForm = {
   currency: 'USD',
   availability: 'in stock',
   condition: '',
+  mileage: '',
   productType: '',
 };
 
@@ -404,6 +406,7 @@ function Parts({ currentUser: propCurrentUser = null }) {
       currency: part.currency || 'USD',
       availability: part.availability || 'in stock',
       condition: part.condition || '',
+      mileage: part.mileage || '',
       productType: part.productType || '',
     });
     setModalOpen(true);
@@ -437,6 +440,7 @@ function Parts({ currentUser: propCurrentUser = null }) {
     const price = Number(form.price);
     const currency = (form.currency || 'USD').trim().toUpperCase();
     const condition = form.condition.trim();
+    const mileage = (form.mileage || '').trim();
     const productType = form.productType.trim();
 
     if (!title && !partName) {
@@ -479,6 +483,7 @@ function Parts({ currentUser: propCurrentUser = null }) {
           currency,
           availability: form.availability,
           condition,
+          mileage,
           productType,
         }),
       });
@@ -815,6 +820,7 @@ function Parts({ currentUser: propCurrentUser = null }) {
               <thead>
                 <tr className="border-b border-gray-800 bg-gray-800/50 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
                   <th scope="col" className="px-4 py-3.5">Title / Description</th>
+                  <th scope="col" className="px-3 py-3.5">Mileage</th>
                   <th scope="col" className="px-3 py-3.5">Price</th>
                   <th scope="col" className="px-3 py-3.5">Availability</th>
                   <th scope="col" className="py-3.5 pl-3 pr-4 text-right">Actions</th>
@@ -856,6 +862,18 @@ function Parts({ currentUser: propCurrentUser = null }) {
                             </span>
                           )}
                         </div>
+                      </td>
+
+                      {/* Mileage */}
+                      <td className="whitespace-nowrap px-3 py-3.5 text-xs text-gray-300">
+                        {part.mileage ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500/10 px-2.5 py-1 text-xs font-semibold text-cyan-300 ring-1 ring-cyan-500/20">
+                            <Gauge className="h-3.5 w-3.5 text-cyan-400" />
+                            {part.mileage}
+                          </span>
+                        ) : (
+                          <span className="text-gray-500">-</span>
+                        )}
                       </td>
 
                       {/* Price */}
@@ -1032,8 +1050,8 @@ function Parts({ currentUser: propCurrentUser = null }) {
                 </p>
               </div>
 
-              {/* Sheet ID & Condition & Product Type */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {/* Sheet ID, Mileage, Condition & Product Type */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-gray-300">
                     Sheet ID / SKU
@@ -1043,6 +1061,19 @@ function Parts({ currentUser: propCurrentUser = null }) {
                     value={form.externalId}
                     onChange={handleFormChange}
                     placeholder="e.g. AUTO000001"
+                    className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-300">
+                    Mileage
+                  </label>
+                  <input
+                    name="mileage"
+                    value={form.mileage}
+                    onChange={handleFormChange}
+                    placeholder="e.g. 75,000 miles"
                     className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
                   />
                 </div>
