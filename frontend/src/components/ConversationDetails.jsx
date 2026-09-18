@@ -61,7 +61,7 @@ function ConversationDetailsSkeleton() {
 
         <div className="space-y-3">
           <div className="flex justify-start">
-            <div className="w-[68%] rounded-2xl bg-[#1C2333] px-4 py-3 shadow-lg">
+            <div className="conversation-skeleton-inbound w-[68%] rounded-2xl bg-[#1C2333] px-4 py-3 shadow-lg">
               <Skeleton width={118} height={16} />
               <Skeleton width="72%" height={12} className="mt-2 block" />
               <div className="mt-3 flex items-center justify-between gap-4">
@@ -72,7 +72,7 @@ function ConversationDetailsSkeleton() {
           </div>
 
           <div className="flex justify-end">
-            <div className="w-[74%] rounded-2xl bg-[#1E293B] px-4 py-3 shadow-lg">
+            <div className="conversation-skeleton-outbound w-[74%] rounded-2xl bg-[#1E293B] px-4 py-3 shadow-lg">
               <Skeleton width="88%" height={14} />
               <Skeleton width="64%" height={14} className="mt-2 block" />
               <div className="mt-3 flex items-center justify-between gap-4">
@@ -83,7 +83,7 @@ function ConversationDetailsSkeleton() {
           </div>
 
           <div className="flex justify-start">
-            <div className="w-[62%] rounded-2xl bg-[#1C2333] px-4 py-3 shadow-lg">
+            <div className="conversation-skeleton-inbound w-[62%] rounded-2xl bg-[#1C2333] px-4 py-3 shadow-lg">
               <Skeleton width={104} height={16} />
               <Skeleton width="58%" height={12} className="mt-2 block" />
               <div className="mt-3 flex items-center justify-between gap-4">
@@ -392,19 +392,19 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#0F1322]">
-      <div className="border-b border-gray-800 bg-[#161B28] px-5 py-4">
+    <div className="conversation-details-panel flex h-full min-h-0 flex-col bg-[#0F1322]">
+      <div className="conversation-header border-b border-gray-800 bg-[#161B28] px-5 py-4">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <button
               type="button"
               onClick={handleCopyNumber}
-              className="truncate text-left text-xl font-semibold text-white hover:text-emerald-300"
+              className="conversation-title truncate text-left text-xl font-semibold text-white hover:text-emerald-300"
               title="Copy number"
             >
               {formatPhoneNumber(phoneNumber)}
             </button>
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="conversation-subtitle mt-1 text-xs text-gray-400">
               {timeline.length} loaded interaction{timeline.length === 1 ? '' : 's'}
             </p>
           </div>
@@ -422,7 +422,7 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-gray-700 px-3 py-2 text-xs font-medium text-gray-300 transition hover:bg-gray-800 hover:text-white"
+              className="conversation-close-btn rounded-xl border border-gray-700 px-3 py-2 text-xs font-medium text-gray-300 transition hover:bg-gray-800 hover:text-white"
             >
               Close
             </button>
@@ -439,7 +439,7 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
               type="button"
               onClick={loadOlderTimeline}
               disabled={loadingMore}
-              className="rounded-xl border border-gray-700 bg-[#161B28] px-4 py-2 text-xs font-semibold text-gray-200 transition hover:border-gray-600 hover:bg-[#1F2533] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="conversation-load-more rounded-xl border border-gray-700 bg-[#161B28] px-4 py-2 text-xs font-semibold text-gray-200 transition hover:border-gray-600 hover:bg-[#1F2533] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loadingMore ? 'Loading...' : 'Load older activity'}
             </button>
@@ -447,13 +447,13 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
         )}
 
         {!loading && timeline.length === 0 && (
-          <p className="py-10 text-center text-sm text-gray-400">No calls or messages found for this number.</p>
+          <p className="conversation-empty py-10 text-center text-sm text-gray-400">No calls or messages found for this number.</p>
         )}
 
         {!loading && Object.entries(groupedTimeline).map(([date, items]) => (
           <div key={date}>
             <div className="mb-4 mt-2 flex justify-center">
-              <span className="rounded-full border border-gray-700 bg-[#161B28] px-3 py-1 text-xs text-gray-300">
+              <span className="conversation-date-pill rounded-full border border-gray-700 bg-[#161B28] px-3 py-1 text-xs text-gray-300">
                 {date}
               </span>
             </div>
@@ -488,36 +488,36 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
                     }`}>
                       {isCall ? (
                         <>
-                          <p className="text-sm font-semibold capitalize">{item.direction} call</p>
-                          <p className={`mt-1 text-xs capitalize ${
+                          <p className="conversation-call-direction text-sm font-semibold capitalize">{item.direction} call</p>
+                          <p className={`conversation-call-status mt-1 text-xs capitalize ${
                             item.status === 'answered-by-teammate' || (item.isConsolidated && item.status === 'completed' && handledByName)
                               ? 'font-semibold text-emerald-400'
                               : 'text-gray-300'
                           }`}>
                             {callStatusLabel}
                           </p>
-                          <p className="mt-1 text-xs text-gray-400">{formatDuration(item.duration)}</p>
+                          <p className="conversation-call-duration mt-1 text-xs text-gray-400">{formatDuration(item.duration)}</p>
                         </>
                       ) : (
                         <>
                           {/* Sender Identification Badge */}
-                          <div className="mb-2 flex items-center justify-between gap-2 border-b border-white/10 pb-1.5">
+                          <div className="conversation-bubble-header mb-2 flex items-center justify-between gap-2 border-b border-white/10 pb-1.5">
                             {isAiMessage ? (
-                              <span className="inline-flex items-center gap-1.5 rounded-md bg-purple-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-purple-300 border border-purple-500/30">
+                              <span className="conversation-badge-ai inline-flex items-center gap-1.5 rounded-md bg-purple-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-purple-300 border border-purple-500/30">
                                 <Bot className="h-3 w-3 text-purple-400" />
                                 <span>AI Assistant</span>
                               </span>
                             ) : isUserMessage ? (
-                              <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-300 border border-blue-500/30">
+                              <span className="conversation-badge-user inline-flex items-center gap-1.5 rounded-md bg-blue-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-300 border border-blue-500/30">
                                 <User className="h-3 w-3 text-blue-400" />
                                 <span>User: {item.userName || item.assigneeName || 'Representative'}</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 rounded-md bg-gray-700/80 px-2 py-0.5 text-[10px] font-semibold text-gray-300 border border-gray-600/30">
+                              <span className="conversation-badge-customer inline-flex items-center gap-1 rounded-md bg-gray-700/80 px-2 py-0.5 text-[10px] font-semibold text-gray-300 border border-gray-600/30">
                                 Customer
                               </span>
                             )}
-                            <span className="text-[10px] font-mono text-gray-400">{formatTime(item.date)}</span>
+                            <span className="conversation-time text-[10px] font-mono text-gray-400">{formatTime(item.date)}</span>
                           </div>
 
                           {item.mediaUrls?.length > 0 && (
@@ -532,20 +532,20 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
                               ))}
                             </div>
                           )}
-                          {item.body && <p className="whitespace-pre-wrap text-sm leading-6">{item.body}</p>}
+                          {item.body && <p className="conversation-body whitespace-pre-wrap text-sm leading-6">{item.body}</p>}
                         </>
                       )}
 
                       <div className="mt-2.5 flex items-center justify-between gap-3 text-[11px] text-gray-400">
-                        {isCall ? <span>{formatTime(item.date)}</span> : <span />}
+                        {isCall ? <span className="conversation-time">{formatTime(item.date)}</span> : <span />}
                         <div className="text-right">
                           {!isCall && (
-                            <span className={`capitalize text-[10px] font-medium ${messageStatusStyles[item.status] || 'text-gray-300'}`}>
+                            <span className={`conversation-status capitalize text-[10px] font-medium ${messageStatusStyles[item.status] || 'text-gray-300'}`}>
                               {formatMessageStatus(item.status)}
                             </span>
                           )}
-                          {allottedNumberLabel && <p className="mt-0.5 text-[10px] text-gray-400">{allottedNumberLabel}</p>}
-                          {handledByName && isCall && <p className="mt-0.5">{handledByName}</p>}
+                          {allottedNumberLabel && <p className="conversation-allotted mt-0.5 text-[10px] text-gray-400">{allottedNumberLabel}</p>}
+                          {handledByName && isCall && <p className="conversation-handler mt-0.5">{handledByName}</p>}
                         </div>
                       </div>
                     </div>
@@ -559,8 +559,8 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
         <div ref={timelineEndRef} />
       </div>
 
-      <form onSubmit={sendMessage} className="border-t border-gray-800 bg-[#161B28] px-5 py-4">
-        {notice && <p className="mb-3 text-sm text-red-400">{notice}</p>}
+      <form onSubmit={sendMessage} className="conversation-compose-form border-t border-gray-800 bg-[#161B28] px-5 py-4">
+        {notice && <p className="conversation-notice mb-3 text-sm text-red-400">{notice}</p>}
 
         <div className="flex flex-col gap-3">
           <textarea
@@ -569,11 +569,11 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
             rows={2}
             maxLength={1600}
             placeholder="Write a message..."
-            className="w-full resize-none rounded-xl border border-gray-700 bg-[#0F1322] px-3 py-2 text-sm text-white focus:border-emerald-500"
+            className="conversation-compose-textarea w-full resize-none rounded-xl border border-gray-700 bg-[#0F1322] px-3 py-2 text-sm text-white focus:border-emerald-500"
           />
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <label className="cursor-pointer rounded-lg border border-gray-700 px-3 py-2 text-xs font-medium text-gray-300 transition hover:bg-gray-800 hover:text-white">
+            <label className="conversation-attach-btn cursor-pointer rounded-lg border border-gray-700 px-3 py-2 text-xs font-medium text-gray-300 transition hover:bg-gray-800 hover:text-white">
               {imageFile ? imageFile.name : suggestedMediaUrls.length > 0 ? `${suggestedMediaUrls.length} AI photo(s) attached` : 'Attach image'}
               <input
                 type="file"
@@ -590,7 +590,7 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
                     setImageFile(null);
                     setSuggestedMediaUrls([]);
                   }}
-                  className="rounded-xl border border-gray-700 px-3 py-2 text-sm font-semibold text-gray-300 transition hover:bg-gray-800 hover:text-white"
+                  className="conversation-remove-img-btn rounded-xl border border-gray-700 px-3 py-2 text-sm font-semibold text-gray-300 transition hover:bg-gray-800 hover:text-white"
                 >
                   Remove image
                 </button>
@@ -599,7 +599,7 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
                 type="button"
                 onClick={draftAiMessage}
                 disabled={drafting || sending || (!phoneNumber && !leadId)}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
+                className="conversation-ai-draft-btn inline-flex items-center justify-center gap-1.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
               >
                 {drafting ? <InlineLoader label="Drafting..." /> : <><Sparkles className="h-4 w-4" aria-hidden="true" /> AI Draft</>}
               </button>

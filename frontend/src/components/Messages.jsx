@@ -337,14 +337,14 @@ function Messages({ selectedPhoneNumber = '', selectedLeadId = '', onRecipientUs
 
   if (loading) {
     return (
-      <div className="max-w-3xl mx-auto">
+      <div className="messages-page max-w-3xl mx-auto">
         <MessagesSkeleton />
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="messages-page max-w-3xl mx-auto">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-white">Messages</h2>

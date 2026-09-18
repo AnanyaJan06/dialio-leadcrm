@@ -67,7 +67,7 @@ function PartsTableSkeleton() {
         {/* Metric cards skeleton */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {Array.from({ length: 4 }).map((_, idx) => (
-            <div key={idx} className="rounded-2xl border border-gray-800 bg-[#11151F] p-4">
+            <div key={idx} className="parts-skeleton-card rounded-2xl border border-gray-800 bg-[#11151F] p-4">
               <Skeleton width={80} height={14} />
               <Skeleton width={110} height={24} className="mt-2 block" />
             </div>
@@ -75,15 +75,15 @@ function PartsTableSkeleton() {
         </div>
 
         {/* Search & filter skeleton */}
-        <div className="flex flex-wrap gap-2 rounded-2xl border border-gray-800 bg-[#11151F] p-3">
+        <div className="parts-skeleton-toolbar flex flex-wrap gap-2 rounded-2xl border border-gray-800 bg-[#11151F] p-3">
           <Skeleton width="40%" height={38} borderRadius={12} />
           <Skeleton width="20%" height={38} borderRadius={12} />
           <Skeleton width="20%" height={38} borderRadius={12} />
         </div>
 
         {/* Table skeleton */}
-        <div className="overflow-hidden rounded-2xl border border-gray-800 bg-[#11151F]">
-          <div className="border-b border-gray-800 bg-gray-800/40 p-4">
+        <div className="parts-skeleton-table overflow-hidden rounded-2xl border border-gray-800 bg-[#11151F]">
+          <div className="parts-skeleton-table-header border-b border-gray-800 bg-gray-800/40 p-4">
             <Skeleton height={20} />
           </div>
           <div className="divide-y divide-gray-800/60 p-2">
@@ -495,7 +495,7 @@ function Parts() {
 
   return (
     <div
-      className="w-full space-y-4 select-none"
+      className="parts-page w-full space-y-4 select-none"
       onCopy={(e) => e.preventDefault()}
       onCut={(e) => e.preventDefault()}
     >
@@ -507,8 +507,8 @@ function Parts() {
               <Boxes className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-tight text-white sm:text-2xl">Parts & Stock Inventory</h2>
-              <p className="text-xs text-gray-400">Live catalog with multi-photo stock items, fitment specs, and live pricing.</p>
+              <h2 className="parts-page-title text-xl font-bold tracking-tight text-white sm:text-2xl">Parts & Stock Inventory</h2>
+              <p className="parts-page-subtitle text-xs text-gray-400">Live catalog with multi-photo stock items, fitment specs, and live pricing.</p>
             </div>
           </div>
         </div>
@@ -519,7 +519,7 @@ function Parts() {
             onClick={() => fetchParts({ silent: true })}
             disabled={refreshing || loading}
             title="Refresh stock list"
-            className="flex items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800/80 px-3 py-2 text-xs font-medium text-gray-300 transition hover:bg-gray-700 hover:text-white disabled:opacity-50"
+            className="parts-refresh-btn flex items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800/80 px-3 py-2 text-xs font-medium text-gray-300 transition hover:bg-gray-700 hover:text-white disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-emerald-400' : ''}`} />
             <span className="hidden sm:inline">Refresh</span>
@@ -530,7 +530,7 @@ function Parts() {
             onClick={() => setSheetSyncModalOpen(true)}
             disabled={syncingSheet || loading}
             title={syncConfig.isConfigured ? 'Sync parts from Google Sheet' : 'Connect Google Sheet'}
-            className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 shadow-sm transition hover:bg-emerald-500/20 hover:text-white disabled:opacity-50"
+            className="parts-sync-btn flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 shadow-sm transition hover:bg-emerald-500/20 hover:text-white disabled:opacity-50"
           >
             <FileSpreadsheet className={`h-3.5 w-3.5 ${syncingSheet ? 'animate-pulse text-emerald-400' : 'text-emerald-400'}`} />
             <span>{syncingSheet ? 'Syncing...' : 'Sync Sheet'}</span>
@@ -542,7 +542,7 @@ function Parts() {
           <button
             type="button"
             onClick={handleOpenAddModal}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#059669] to-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:from-[#047857] hover:to-emerald-700 sm:text-sm"
+            className="parts-add-btn flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#059669] to-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:from-[#047857] hover:to-emerald-700 sm:text-sm"
           >
             <Plus className="h-4 w-4" />
             <span>+ Add Part</span>
@@ -553,7 +553,7 @@ function Parts() {
       {/* Metrics Summary Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {/* Total Stock */}
-        <div className="rounded-2xl border border-gray-800 bg-[#11151F] p-3.5 shadow-sm">
+        <div className="parts-metric-card rounded-2xl border border-gray-800 bg-[#11151F] p-3.5 shadow-sm">
           <div className="flex items-center justify-between text-gray-400">
             <span className="text-xs font-medium uppercase tracking-wider">Total Catalog</span>
             <div className="rounded-lg bg-gray-800/90 p-1.5 text-gray-300">
@@ -567,7 +567,7 @@ function Parts() {
         </div>
 
         {/* In Stock */}
-        <div className="rounded-2xl border border-emerald-500/20 bg-[#11151F] p-3.5 shadow-sm">
+        <div className="parts-metric-card parts-metric-in-stock rounded-2xl border border-emerald-500/20 bg-[#11151F] p-3.5 shadow-sm">
           <div className="flex items-center justify-between text-emerald-400">
             <span className="text-xs font-medium uppercase tracking-wider">In Stock</span>
             <div className="rounded-lg bg-emerald-500/10 p-1.5 text-emerald-400 ring-1 ring-emerald-500/20">
@@ -585,7 +585,7 @@ function Parts() {
         </div>
 
         {/* Out of Stock */}
-        <div className="rounded-2xl border border-rose-500/20 bg-[#11151F] p-3.5 shadow-sm">
+        <div className="parts-metric-card parts-metric-out-of-stock rounded-2xl border border-rose-500/20 bg-[#11151F] p-3.5 shadow-sm">
           <div className="flex items-center justify-between text-rose-400">
             <span className="text-xs font-medium uppercase tracking-wider">Out of Stock</span>
             <div className="rounded-lg bg-rose-500/10 p-1.5 text-rose-400 ring-1 ring-rose-500/20">
@@ -599,7 +599,7 @@ function Parts() {
         </div>
 
         {/* Available Makes / In-Stock Rate */}
-        <div className="rounded-2xl border border-cyan-500/20 bg-[#11151F] p-3.5 shadow-sm">
+        <div className="parts-metric-card parts-metric-makes rounded-2xl border border-cyan-500/20 bg-[#11151F] p-3.5 shadow-sm">
           <div className="flex items-center justify-between text-cyan-400">
             <span className="text-xs font-medium uppercase tracking-wider">
               {availableMakes.length > 0 ? 'Vehicle Makes' : 'Stock Availability'}
@@ -618,7 +618,7 @@ function Parts() {
       </div>
 
       {/* Search, Filter & Control Toolbar */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-gray-800 bg-[#11151F] p-3.5 md:flex-row md:items-center md:justify-between">
+      <div className="parts-toolbar flex flex-col gap-3 rounded-2xl border border-gray-800 bg-[#11151F] p-3.5 md:flex-row md:items-center md:justify-between">
         {/* Search bar */}
         <div className="relative min-w-[240px] flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -627,7 +627,7 @@ function Parts() {
             placeholder="Search title, description, SKU, price across catalog..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-xl border border-gray-700 bg-gray-900/90 py-2.5 pl-10 pr-9 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+            className="parts-search-input w-full rounded-xl border border-gray-700 bg-gray-900/90 py-2.5 pl-10 pr-9 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
           />
           {searchTerm && (
             <button
@@ -651,7 +651,7 @@ function Parts() {
             <select
               value={availabilityFilter}
               onChange={(e) => handleAvailabilityChange(e.target.value)}
-              className="rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-xs font-medium text-gray-200 transition focus:border-emerald-500 focus:outline-none"
+              className="parts-select rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-xs font-medium text-gray-200 transition focus:border-emerald-500 focus:outline-none"
             >
               <option value="all">All Availability</option>
               <option value="in stock">In Stock Only</option>
@@ -664,7 +664,7 @@ function Parts() {
             <select
               value={makeFilter}
               onChange={(e) => handleMakeChange(e.target.value)}
-              className="max-w-[140px] truncate rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-xs font-medium text-gray-200 transition focus:border-emerald-500 focus:outline-none"
+              className="parts-select max-w-[140px] truncate rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-xs font-medium text-gray-200 transition focus:border-emerald-500 focus:outline-none"
             >
               <option value="all">All Makes ({availableMakes.length})</option>
               {availableMakes.map((make) => (
@@ -678,7 +678,7 @@ function Parts() {
             <select
               value={sortBy}
               onChange={(e) => handleSortChange(e.target.value)}
-              className="rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-xs font-medium text-gray-200 transition focus:border-emerald-500 focus:outline-none"
+              className="parts-select rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-xs font-medium text-gray-200 transition focus:border-emerald-500 focus:outline-none"
             >
               <option value="newest">Sort: Newest Added</option>
               <option value="oldest">Sort: Oldest Added</option>
@@ -696,7 +696,7 @@ function Parts() {
             <button
               type="button"
               onClick={handleResetFilters}
-              className="flex items-center gap-1 rounded-xl bg-gray-800 px-3 py-2.5 text-xs font-medium text-gray-400 transition hover:bg-gray-700 hover:text-white"
+              className="parts-reset-btn flex items-center gap-1 rounded-xl bg-gray-800 px-3 py-2.5 text-xs font-medium text-gray-400 transition hover:bg-gray-700 hover:text-white"
             >
               <X className="h-3.5 w-3.5" />
               <span>Reset</span>
@@ -741,9 +741,9 @@ function Parts() {
           </div>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-gray-800 bg-[#11151F] shadow-xl">
+        <div className="parts-table-container overflow-hidden rounded-2xl border border-gray-800 bg-[#11151F] shadow-xl">
           {/* Table summary bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800/80 bg-gray-800/30 px-4 py-2.5 text-xs text-gray-400">
+          <div className="parts-table-summary flex flex-wrap items-center justify-between gap-2 border-b border-gray-800/80 bg-gray-800/30 px-4 py-2.5 text-xs text-gray-400">
             <span>
               Showing <strong className="text-white">{pagination.total > 0 ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong> -{' '}
               <strong className="text-white">{Math.min(pagination.page * pagination.limit, pagination.total)}</strong> of{' '}
@@ -751,7 +751,7 @@ function Parts() {
             </span>
             <div className="flex items-center gap-3">
               {hasActiveFilters && (
-                <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400 ring-1 ring-emerald-500/20">
+                <span className="parts-filtered-badge rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400 ring-1 ring-emerald-500/20">
                   Filtered ({pagination.total.toLocaleString()} matches)
                 </span>
               )}
@@ -760,7 +760,7 @@ function Parts() {
                 <select
                   value={limit}
                   onChange={(e) => handleLimitChange(Number(e.target.value))}
-                  className="rounded-lg border border-gray-700 bg-gray-800 px-2 py-0.5 text-xs text-white focus:border-emerald-500 focus:outline-none"
+                  className="parts-rows-select rounded-lg border border-gray-700 bg-gray-800 px-2 py-0.5 text-xs text-white focus:border-emerald-500 focus:outline-none"
                 >
                   <option value={20}>20</option>
                   <option value={25}>25</option>
@@ -776,7 +776,7 @@ function Parts() {
           <div className="overflow-x-auto thin-scrollbar">
             <table className="w-full border-collapse text-left text-sm">
               <thead>
-                <tr className="border-b border-gray-800 bg-gray-800/50 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                <tr className="parts-table-head border-b border-gray-800 bg-gray-800/50 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
                   <th scope="col" className="px-4 py-3.5">Title / Description</th>
                   <th scope="col" className="px-3 py-3.5">Price</th>
                   <th scope="col" className="px-3 py-3.5">Availability</th>
@@ -784,7 +784,7 @@ function Parts() {
                 </tr>
               </thead>
               <tbody
-                className="divide-y divide-gray-800/60 font-medium select-none"
+                className="parts-table-body divide-y divide-gray-800/60 font-medium select-none"
                 onContextMenu={(e) => e.preventDefault()}
               >
                 {parts.map((part, index) => {
@@ -795,26 +795,26 @@ function Parts() {
                   return (
                     <tr
                       key={part._id || index}
-                      className="group transition-colors hover:bg-gray-800/40"
+                      className="parts-table-row group transition-colors hover:bg-gray-800/40"
                     >
                       {/* Title / Description */}
                       <td className="px-4 py-3.5">
-                        <div className="font-semibold text-white text-sm" title={displayTitle}>
+                        <div className="parts-item-title font-semibold text-white text-sm" title={displayTitle}>
                           {displayTitle}
                         </div>
                         <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-400">
                           {part.externalId && (
-                            <span className="font-mono text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                            <span className="parts-sku-badge font-mono text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
                               {part.externalId}
                             </span>
                           )}
                           {part.condition && (
-                            <span className="capitalize text-[11px] bg-gray-800 px-1.5 py-0.5 rounded text-gray-300">
+                            <span className="parts-condition-badge capitalize text-[11px] bg-gray-800 px-1.5 py-0.5 rounded text-gray-300">
                               {part.condition}
                             </span>
                           )}
                           {part.productType && (
-                            <span className="text-[11px] text-gray-400">
+                            <span className="parts-type-badge text-[11px] text-gray-400">
                               {part.productType}
                             </span>
                           )}
@@ -822,14 +822,14 @@ function Parts() {
                       </td>
 
                       {/* Price */}
-                      <td className="whitespace-nowrap px-3 py-3.5 font-semibold text-white">
+                      <td className="parts-price whitespace-nowrap px-3 py-3.5 font-semibold text-white">
                         {formatPrice(part.price, part.currency)}
                       </td>
 
                       {/* Availability */}
                       <td className="whitespace-nowrap px-3 py-3.5">
                         <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          className={`parts-stock-badge inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
                             isInStock
                               ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20'
                               : 'bg-rose-500/10 text-rose-400 ring-1 ring-rose-500/20'
@@ -852,7 +852,7 @@ function Parts() {
                             type="button"
                             onClick={() => handleOpenEditModal(part)}
                             title="Edit part"
-                            className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-800 hover:text-emerald-300"
+                            className="parts-action-edit rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-800 hover:text-emerald-300"
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
@@ -863,7 +863,7 @@ function Parts() {
                             onClick={() => handleDelete(part)}
                             disabled={isDeleting}
                             title="Delete part"
-                            className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-950/40 hover:text-red-400 disabled:opacity-50"
+                            className="parts-action-delete rounded-lg p-1.5 text-gray-400 transition hover:bg-red-950/40 hover:text-red-400 disabled:opacity-50"
                           >
                             {isDeleting ? (
                               <InlineLoader size="xs" />
@@ -881,7 +881,7 @@ function Parts() {
           </div>
 
           {/* Pagination Footer */}
-          <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-800 bg-[#161B26] px-4 py-3 sm:flex-row text-xs text-gray-400">
+          <div className="parts-pagination flex flex-col items-center justify-between gap-3 border-t border-gray-800 bg-[#161B26] px-4 py-3 sm:flex-row text-xs text-gray-400">
             <div>
               Page <strong className="text-white">{pagination.page}</strong> of{' '}
               <strong className="text-white">{pagination.totalPages || 1}</strong>
@@ -893,7 +893,7 @@ function Parts() {
                   type="button"
                   onClick={() => handlePageChange(page - 1)}
                   disabled={page <= 1 || loading}
-                  className="flex items-center gap-1 rounded-lg border border-gray-700 bg-gray-800/80 px-2.5 py-1.5 text-xs text-gray-300 transition hover:bg-gray-700 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="parts-nav-btn flex items-center gap-1 rounded-lg border border-gray-700 bg-gray-800/80 px-2.5 py-1.5 text-xs text-gray-300 transition hover:bg-gray-700 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
                   <span>Previous</span>
@@ -908,7 +908,7 @@ function Parts() {
                         key={`page-${p}`}
                         type="button"
                         onClick={() => handlePageChange(p)}
-                        className={`h-7 min-w-[28px] px-1.5 rounded-lg text-xs font-medium transition ${
+                        className={`parts-page-btn h-7 min-w-[28px] px-1.5 rounded-lg text-xs font-medium transition ${
                           page === p
                             ? 'bg-emerald-600 text-white font-bold shadow-sm shadow-emerald-600/30'
                             : 'border border-gray-800 bg-gray-800/70 text-gray-300 hover:bg-gray-700 hover:text-white'
@@ -924,7 +924,7 @@ function Parts() {
                   type="button"
                   onClick={() => handlePageChange(page + 1)}
                   disabled={page >= pagination.totalPages || loading}
-                  className="flex items-center gap-1 rounded-lg border border-gray-700 bg-gray-800/80 px-2.5 py-1.5 text-xs text-gray-300 transition hover:bg-gray-700 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="parts-nav-btn flex items-center gap-1 rounded-lg border border-gray-700 bg-gray-800/80 px-2.5 py-1.5 text-xs text-gray-300 transition hover:bg-gray-700 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <span>Next</span>
                   <ChevronRight className="h-3.5 w-3.5" />
@@ -938,15 +938,15 @@ function Parts() {
       {/* Add / Edit Part Modal Dialog (Supports up to 4 Photos) */}
       {modalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm modal-backdrop"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm modal-backdrop parts-modal-backdrop"
           onClick={handleCloseModal}
         >
           <div
-            className="w-full max-w-xl max-h-[92vh] overflow-y-auto thin-scrollbar rounded-2xl border border-gray-700 bg-[#161B28] shadow-2xl modal-panel"
+            className="parts-modal-panel w-full max-w-xl max-h-[92vh] overflow-y-auto thin-scrollbar rounded-2xl border border-gray-700 bg-[#161B28] shadow-2xl modal-panel"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-[#1C2333]/95 px-5 py-4 backdrop-blur-sm">
+            <div className="parts-modal-header sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-[#1C2333]/95 px-5 py-4 backdrop-blur-sm">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30">
                   {editingPart ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
@@ -1178,15 +1178,15 @@ function Parts() {
       {/* Google Sheets Sync Modal */}
       {sheetSyncModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm modal-backdrop parts-modal-backdrop"
           onClick={() => !syncingSheet && setSheetSyncModalOpen(false)}
         >
           <div
-            className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-800 bg-[#161B26] shadow-2xl shadow-black/80 animate-in fade-in zoom-in-95 duration-150"
+            className="parts-modal-panel parts-sheet-modal w-full max-w-lg overflow-hidden rounded-2xl border border-gray-800 bg-[#161B26] shadow-2xl shadow-black/80 animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-gray-800 bg-[#1C2333]/90 px-6 py-4">
+            <div className="parts-modal-header flex items-center justify-between border-b border-gray-800 bg-[#1C2333]/90 px-6 py-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/30">
                   <FileSpreadsheet className="h-5 w-5" />
