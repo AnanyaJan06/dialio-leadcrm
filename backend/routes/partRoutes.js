@@ -17,7 +17,7 @@ router.get('/sync-config', authMiddleware, getGoogleSheetSyncConfig);
 router.post('/', authMiddleware, createPart);
 router.get('/', authMiddleware, getParts);
 router.put('/:id', authMiddleware, requireAdmin, updatePart);
-router.delete('/:id', authMiddleware, deletePart);
+router.delete('/:id', authMiddleware, requireAdmin, deletePart);
 
 export default router;
 

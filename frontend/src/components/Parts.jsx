@@ -503,6 +503,11 @@ function Parts({ currentUser: propCurrentUser = null }) {
   };
 
   const handleDelete = async (part) => {
+    if (!isAdmin) {
+      showErrorToast('Only administrators can delete parts');
+      return;
+    }
+
     const partSummary = part.title || `${part.year || ''} ${part.make || ''} ${part.model || ''} ${part.trim || ''} - ${part.part || 'Part'}`.trim() || 'this part';
     const confirmed = await confirmAction({
       title: 'Delete part from stock?',
@@ -901,9 +906,9 @@ function Parts({ currentUser: propCurrentUser = null }) {
 
                       {/* Actions */}
                       <td className="whitespace-nowrap py-3.5 pl-3 pr-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {/* Edit Button (Admin Only) */}
-                          {isAdmin && (
+                        {isAdmin ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            {/* Edit Button (Admin Only) */}
                             <button
                               type="button"
                               onClick={() => handleOpenEditModal(part)}
@@ -912,23 +917,25 @@ function Parts({ currentUser: propCurrentUser = null }) {
                             >
                               <Pencil className="h-4 w-4" />
                             </button>
-                          )}
 
-                          {/* Delete Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(part)}
-                            disabled={isDeleting}
-                            title="Delete part"
-                            className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-950/40 hover:text-red-400 disabled:opacity-50"
-                          >
-                            {isDeleting ? (
-                              <InlineLoader size="xs" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </button>
-                        </div>
+                            {/* Delete Button (Admin Only) */}
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(part)}
+                              disabled={isDeleting}
+                              title="Delete part"
+                              className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-950/40 hover:text-red-400 disabled:opacity-50"
+                            >
+                              {isDeleting ? (
+                                <InlineLoader size="xs" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-gray-600 text-xs pr-2">—</span>
+                        )}
                       </td>
                     </tr>
                   );

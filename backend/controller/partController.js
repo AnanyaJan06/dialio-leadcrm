@@ -250,6 +250,10 @@ export const updatePart = async (req, res) => {
 
 export const deletePart = async (req, res) => {
   try {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
     const part = await Part.findByIdAndDelete(req.params.id);
 
     if (!part) {
