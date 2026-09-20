@@ -62,7 +62,7 @@ const formatDate = (dateString) => {
   });
 };
 
-function PartsTableSkeleton() {
+function PartsTableSkeleton({ isAdmin = true }) {
   return (
     <AppSkeletonTheme>
       <div className="w-full space-y-3" role="status" aria-label="Loading stock table">
@@ -97,7 +97,7 @@ function PartsTableSkeleton() {
                 </div>
                 <Skeleton width={80} height={16} />
                 <Skeleton width={85} height={22} borderRadius={999} />
-                <Skeleton width={60} height={28} borderRadius={8} />
+                {isAdmin && <Skeleton width={60} height={28} borderRadius={8} />}
               </div>
             ))}
           </div>
@@ -754,7 +754,7 @@ function Parts({ currentUser: propCurrentUser = null }) {
 
       {/* Main Stock Table */}
       {loading ? (
-        <PartsTableSkeleton />
+        <PartsTableSkeleton isAdmin={isAdmin} />
       ) : parts.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-gray-800 bg-[#11151F] py-16 px-4 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-800/80 text-gray-400 ring-1 ring-gray-700">
@@ -828,7 +828,7 @@ function Parts({ currentUser: propCurrentUser = null }) {
                   <th scope="col" className="px-3 py-3.5">Mileage</th>
                   <th scope="col" className="px-3 py-3.5">Price</th>
                   <th scope="col" className="px-3 py-3.5">Availability</th>
-                  <th scope="col" className="py-3.5 pl-3 pr-4 text-right">Actions</th>
+                  {isAdmin && <th scope="col" className="py-3.5 pl-3 pr-4 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody
@@ -905,8 +905,8 @@ function Parts({ currentUser: propCurrentUser = null }) {
                       </td>
 
                       {/* Actions */}
-                      <td className="whitespace-nowrap py-3.5 pl-3 pr-4 text-right">
-                        {isAdmin ? (
+                      {isAdmin && (
+                        <td className="whitespace-nowrap py-3.5 pl-3 pr-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             {/* Edit Button (Admin Only) */}
                             <button
@@ -933,10 +933,8 @@ function Parts({ currentUser: propCurrentUser = null }) {
                               )}
                             </button>
                           </div>
-                        ) : (
-                          <span className="text-gray-600 text-xs pr-2">—</span>
-                        )}
-                      </td>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
