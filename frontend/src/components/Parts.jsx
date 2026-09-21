@@ -5,6 +5,7 @@ import {
   FileSpreadsheet,
   ChevronLeft,
   ChevronRight,
+  Gauge,
   PackageCheck,
   PackageX,
   Pencil,
@@ -34,6 +35,7 @@ const emptyForm = {
   currency: 'USD',
   availability: 'in stock',
   condition: '',
+  mileage: '',
   productType: '',
 };
 
@@ -60,7 +62,7 @@ const formatDate = (dateString) => {
   });
 };
 
-function PartsTableSkeleton() {
+function PartsTableSkeleton({ isAdmin = true }) {
   return (
     <AppSkeletonTheme>
       <div className="w-full space-y-3" role="status" aria-label="Loading stock table">
@@ -95,7 +97,7 @@ function PartsTableSkeleton() {
                 </div>
                 <Skeleton width={80} height={16} />
                 <Skeleton width={85} height={22} borderRadius={999} />
-                <Skeleton width={60} height={28} borderRadius={8} />
+                {isAdmin && <Skeleton width={60} height={28} borderRadius={8} />}
               </div>
             ))}
           </div>
@@ -105,7 +107,36 @@ function PartsTableSkeleton() {
   );
 }
 
-function Parts() {
+function Parts({ currentUser: propCurrentUser = null }) {
+  const [currentUser, setCurrentUser] = useState(propCurrentUser);
+
+  useEffect(() => {
+    if (propCurrentUser) {
+      setCurrentUser(propCurrentUser);
+    }
+  }, [propCurrentUser]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      fetch(`${BACKEND_URL}/api/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && (data._id || data.id || data.role)) {
+            setCurrentUser(data);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [currentUser]);
+
+  const isAdmin = (propCurrentUser?.role || currentUser?.role) === 'admin';
+
   const [parts, setParts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -357,6 +388,10 @@ function Parts() {
 
   // Open Modal for Edit
   const handleOpenEditModal = (part) => {
+    if (!isAdmin) {
+      showErrorToast('Only administrators can edit parts');
+      return;
+    }
     setEditingPart(part);
     const existingTitle = part.title || [part.year, part.make, part.model, part.trim, part.part].filter(Boolean).join(' ') || part.part || '';
     setForm({
@@ -371,6 +406,7 @@ function Parts() {
       currency: part.currency || 'USD',
       availability: part.availability || 'in stock',
       condition: part.condition || '',
+      mileage: part.mileage || '',
       productType: part.productType || '',
     });
     setModalOpen(true);
@@ -404,6 +440,7 @@ function Parts() {
     const price = Number(form.price);
     const currency = (form.currency || 'USD').trim().toUpperCase();
     const condition = form.condition.trim();
+    const mileage = (form.mileage || '').trim();
     const productType = form.productType.trim();
 
     if (!title && !partName) {
@@ -419,6 +456,10 @@ function Parts() {
     try {
       setSaving(true);
       const isEditing = Boolean(editingPart && editingPart._id);
+      if (isEditing && !isAdmin) {
+        showErrorToast('Only administrators can edit parts');
+        return;
+      }
       const url = isEditing
         ? `${BACKEND_URL}/api/parts/${editingPart._id}`
         : `${BACKEND_URL}/api/parts`;
@@ -442,6 +483,7 @@ function Parts() {
           currency,
           availability: form.availability,
           condition,
+          mileage,
           productType,
         }),
       });
@@ -461,6 +503,11 @@ function Parts() {
   };
 
   const handleDelete = async (part) => {
+    if (!isAdmin) {
+      showErrorToast('Only administrators can delete parts');
+      return;
+    }
+
     const partSummary = part.title || `${part.year || ''} ${part.make || ''} ${part.model || ''} ${part.trim || ''} - ${part.part || 'Part'}`.trim() || 'this part';
     const confirmed = await confirmAction({
       title: 'Delete part from stock?',
@@ -707,7 +754,7 @@ function Parts() {
 
       {/* Main Stock Table */}
       {loading ? (
-        <PartsTableSkeleton />
+        <PartsTableSkeleton isAdmin={isAdmin} />
       ) : parts.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-gray-800 bg-[#11151F] py-16 px-4 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-800/80 text-gray-400 ring-1 ring-gray-700">
@@ -778,9 +825,10 @@ function Parts() {
               <thead>
                 <tr className="parts-table-head border-b border-gray-800 bg-gray-800/50 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
                   <th scope="col" className="px-4 py-3.5">Title / Description</th>
+                  <th scope="col" className="px-3 py-3.5">Mileage</th>
                   <th scope="col" className="px-3 py-3.5">Price</th>
                   <th scope="col" className="px-3 py-3.5">Availability</th>
-                  <th scope="col" className="py-3.5 pl-3 pr-4 text-right">Actions</th>
+                  {isAdmin && <th scope="col" className="py-3.5 pl-3 pr-4 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody
@@ -821,6 +869,18 @@ function Parts() {
                         </div>
                       </td>
 
+                      {/* Mileage */}
+                      <td className="whitespace-nowrap px-3 py-3.5 text-xs text-gray-300">
+                        {part.mileage ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500/10 px-2.5 py-1 text-xs font-semibold text-cyan-300 ring-1 ring-cyan-500/20">
+                            <Gauge className="h-3.5 w-3.5 text-cyan-400" />
+                            {part.mileage}
+                          </span>
+                        ) : (
+                          <span className="text-gray-500">-</span>
+                        )}
+                      </td>
+
                       {/* Price */}
                       <td className="parts-price whitespace-nowrap px-3 py-3.5 font-semibold text-white">
                         {formatPrice(part.price, part.currency)}
@@ -845,34 +905,36 @@ function Parts() {
                       </td>
 
                       {/* Actions */}
-                      <td className="whitespace-nowrap py-3.5 pl-3 pr-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {/* Edit Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(part)}
-                            title="Edit part"
-                            className="parts-action-edit rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-800 hover:text-emerald-300"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
+                      {isAdmin && (
+                        <td className="whitespace-nowrap py-3.5 pl-3 pr-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {/* Edit Button (Admin Only) */}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditModal(part)}
+                              title="Edit part"
+                              className="parts-action-edit rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-800 hover:text-emerald-300"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
 
-                          {/* Delete Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(part)}
-                            disabled={isDeleting}
-                            title="Delete part"
-                            className="parts-action-delete rounded-lg p-1.5 text-gray-400 transition hover:bg-red-950/40 hover:text-red-400 disabled:opacity-50"
-                          >
-                            {isDeleting ? (
-                              <InlineLoader size="xs" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </button>
-                        </div>
-                      </td>
+                            {/* Delete Button (Admin Only) */}
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(part)}
+                              disabled={isDeleting}
+                              title="Delete part"
+                              className="parts-action-delete rounded-lg p-1.5 text-gray-400 transition hover:bg-red-950/40 hover:text-red-400 disabled:opacity-50"
+                            >
+                              {isDeleting ? (
+                                <InlineLoader size="xs" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -993,8 +1055,8 @@ function Parts() {
                 </p>
               </div>
 
-              {/* Sheet ID & Condition & Product Type */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {/* Sheet ID, Mileage, Condition & Product Type */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-gray-300">
                     Sheet ID / SKU
@@ -1004,6 +1066,19 @@ function Parts() {
                     value={form.externalId}
                     onChange={handleFormChange}
                     placeholder="e.g. AUTO000001"
+                    className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-300">
+                    Mileage
+                  </label>
+                  <input
+                    name="mileage"
+                    value={form.mileage}
+                    onChange={handleFormChange}
+                    placeholder="e.g. 75,000 miles"
                     className="w-full rounded-xl border border-gray-700 bg-gray-900/90 px-3 py-2.5 text-sm text-white placeholder-gray-500 transition focus:border-emerald-500"
                   />
                 </div>

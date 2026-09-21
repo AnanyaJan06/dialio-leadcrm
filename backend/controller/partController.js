@@ -38,6 +38,7 @@ const normalizePartPayload = (body, userId) => {
       currency: clean(body.currency || 'USD').toUpperCase(),
       availability,
       condition: clean(body.condition),
+      mileage: clean(body.mileage),
       productType: clean(body.productType ?? body.product_type),
       createdBy: userId || null,
     },
@@ -117,6 +118,7 @@ export const getParts = async (req, res) => {
           { year: regex },
           { trim: regex },
           { condition: regex },
+          { mileage: regex },
           { productType: regex },
         ];
       } else {
@@ -134,6 +136,7 @@ export const getParts = async (req, res) => {
               { year: regex },
               { trim: regex },
               { condition: regex },
+              { mileage: regex },
               { productType: regex },
             ],
           };
@@ -166,7 +169,7 @@ export const getParts = async (req, res) => {
       distinctMakes
     ] = await Promise.all([
       Part.find(filter)
-        .select('externalId title part make model year trim price currency availability condition productType createdAt')
+        .select('externalId title part make model year trim price currency availability condition mileage productType createdAt')
         .sort(sortObj)
         .skip(skip)
         .limit(limitNum)
@@ -216,6 +219,10 @@ export const getParts = async (req, res) => {
 
 export const updatePart = async (req, res) => {
   try {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
     const normalized = normalizePartPayload(req.body, req.user?.id);
     const validationError = validatePartPayload(normalized);
     if (validationError) return res.status(400).json({ message: validationError });
@@ -243,6 +250,10 @@ export const updatePart = async (req, res) => {
 
 export const deletePart = async (req, res) => {
   try {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
     const part = await Part.findByIdAndDelete(req.params.id);
 
     if (!part) {
@@ -266,7 +277,8 @@ const HEADER_ALIASES = {
   price: ['price', 'cost', 'retailprice', 'quoteprice', 'rate', 'amount', 'usd', 'priceusd', 'partprice'],
   currency: ['currency', 'curr'],
   availability: ['availability', 'status', 'instock', 'stockstatus', 'stock', 'available', 'inventory'],
-  condition: ['condition', 'grade', 'mileage', 'state', 'quality', 'notes', 'descriptioncondition'],
+  condition: ['condition', 'grade', 'state', 'quality', 'notes', 'descriptioncondition'],
+  mileage: ['mileage', 'miles', 'odometer', 'mi', 'milage'],
   productType: ['producttype', 'product_type', 'type', 'category', 'itemtype'],
 };
 
@@ -433,6 +445,7 @@ export const syncGoogleSheetParts = async (req, res) => {
       const currency = getVal('currency') || 'USD';
       const availability = normalizeAvailability(getVal('availability'));
       const condition = getVal('condition');
+      const mileage = getVal('mileage');
       const productType = getVal('productType');
 
       const title = customTitle || buildPartTitle({ part: partName, year, make, model, trim }) || partName;
@@ -458,6 +471,7 @@ export const syncGoogleSheetParts = async (req, res) => {
         currency: currency.toUpperCase(),
         availability,
         condition,
+        mileage,
         productType,
       };
 

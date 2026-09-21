@@ -663,7 +663,7 @@ function App() {
           {activeTab === 'followups' && (
             <FollowUps onDueCountChange={setDueFollowUps} currentUser={currentUser} />
           )}
-          {activeTab === 'parts' && <Parts />}
+          {activeTab === 'parts' && <Parts currentUser={currentUser} />}
           {activeTab === 'settings' && <Settings />}
         </div>
       </div>
@@ -680,7 +680,7 @@ function App() {
           </div>
         ) : activeTab === 'parts' ? (
           <div className="h-full overflow-auto p-4 thin-scrollbar">
-            <Parts />
+            <Parts currentUser={currentUser} />
           </div>
         ) : activeTab === 'team' ? (
           <InternalMessageDetails

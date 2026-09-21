@@ -8,6 +8,7 @@ import {
   updatePart,
 } from '../controller/partController.js';
 import authMiddleware from '../middleware/authMiddleware.js';
+import { requireAdmin } from '../controller/authController.js';
 
 const router = express.Router();
 
@@ -15,8 +16,9 @@ router.post('/sync-sheet', authMiddleware, syncGoogleSheetParts);
 router.get('/sync-config', authMiddleware, getGoogleSheetSyncConfig);
 router.post('/', authMiddleware, createPart);
 router.get('/', authMiddleware, getParts);
-router.put('/:id', authMiddleware, updatePart);
-router.delete('/:id', authMiddleware, deletePart);
+router.put('/:id', authMiddleware, requireAdmin, updatePart);
+router.delete('/:id', authMiddleware, requireAdmin, deletePart);
 
 export default router;
+
 
