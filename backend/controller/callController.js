@@ -1,13 +1,17 @@
 import CallLog from '../model/CallLog.js';
 import CallTranscript from '../model/CallTranscript.js';
+import Contact from '../model/Contact.js';
 import InboundCallSession from '../model/InboundCallSession.js';
+import Lead from '../model/Lead.js';
 import User from '../model/User.js';
 import { buildCallAccessQuery } from '../utils/callAccess.js';
 import { consolidateAdminCallLogs } from '../utils/consolidateCallLogs.js';
 import { findInboundSession } from '../utils/inboundCallSession.js';
 import { buildPaginatedResponse, parseBeforeDate, parseLimit } from '../utils/pagination.js';
-import { buildPhoneOrFilter } from '../utils/phoneMatch.js';
+import { buildPhoneOrFilter, buildPhonePatterns, to10Digits } from '../utils/phoneMatch.js';
 import { getAssignedNumberForUser } from '../utils/twilioNumbers.js';
+
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const createTeammateCallLogs = async (session, answererId) => {
   const otherUserIds = (session.assignedUserIds || [])
@@ -37,14 +41,59 @@ const createTeammateCallLogs = async (session, answererId) => {
   )));
 };
 
-const formatCallLog = (log) => {
-  const item = log.toObject();
+const resolveContactsForLogs = async (logs = []) => {
+  const phones = [...new Set(logs.map((log) => log.phoneNumber).filter(Boolean))];
+  if (phones.length === 0) return new Map();
+
+  const phonePatterns = [...new Set(phones.flatMap((p) => buildPhonePatterns(p)))];
+
+  const [contacts, leads] = await Promise.all([
+    Contact.find({ phone: { $in: phonePatterns } }).select('_id name phone company').lean(),
+    Lead.find({ phone: { $in: phonePatterns } }).select('_id name phone').lean()
+  ]);
+
+  const map = new Map();
+
+  // Populate from leads first
+  for (const lead of leads) {
+    if (!lead.phone) continue;
+    const info = { name: lead.name, company: '', leadId: lead._id };
+    const p10 = to10Digits(lead.phone);
+    if (p10) map.set(p10, info);
+    map.set(lead.phone, info);
+    for (const pat of buildPhonePatterns(lead.phone)) {
+      if (!map.has(pat)) map.set(pat, info);
+    }
+  }
+
+  // Populate from contacts second (higher priority than leads)
+  for (const contact of contacts) {
+    if (!contact.phone) continue;
+    const info = { name: contact.name, company: contact.company || '', contactId: contact._id };
+    const p10 = to10Digits(contact.phone);
+    if (p10) map.set(p10, info);
+    map.set(contact.phone, info);
+    for (const pat of buildPhonePatterns(contact.phone)) {
+      map.set(pat, info);
+    }
+  }
+
+  return map;
+};
+
+const formatCallLog = (log, contactMap = new Map()) => {
+  const item = log.toObject ? log.toObject() : log;
+  const directContact = item.contact && typeof item.contact === 'object' ? item.contact : null;
+  const digits10 = to10Digits(item.phoneNumber);
+  const matchedContact = directContact || contactMap.get(digits10) || contactMap.get(item.phoneNumber);
 
   return {
     ...item,
     userName: item.user?.name || 'Unknown User',
     userEmail: item.user?.email || '',
-    answeredByName: item.answeredBy?.name || ''
+    answeredByName: item.answeredBy?.name || '',
+    contactName: matchedContact?.name || item.contactName || '',
+    contactCompany: matchedContact?.company || item.contactCompany || ''
   };
 };
 
@@ -73,8 +122,14 @@ export const saveCallLog = async (req, res) => {
       resolvedAnsweredBy = session?.answeredBy || undefined;
     }
 
+    const phonePatterns = buildPhonePatterns(phoneNumber);
+    const existingContact = await Contact.findOne({
+      phone: { $in: phonePatterns }
+    }).select('_id');
+
     const callLogData = {
       user: req.user.id,
+      contact: existingContact?._id || undefined,
       phoneNumber,
       localNumber: resolvedLocalNumber,
       callType: resolvedCallType,
@@ -236,6 +291,7 @@ export const getCallLogs = async (req, res) => {
     const limit = parseLimit(req.query.limit);
     const before = parseBeforeDate(req.query.before);
     const phoneNumber = String(req.query.phoneNumber || '').trim();
+    const search = String(req.query.search || '').trim();
     const filters = [];
 
     if (phoneNumber) {
@@ -245,6 +301,54 @@ export const getCallLogs = async (req, res) => {
       if (Object.keys(accessQuery).length > 0) {
         filters.push(accessQuery);
       }
+    }
+
+    if (search) {
+      const searchRegex = { $regex: escapeRegex(search), $options: 'i' };
+      const rawDigits = search.replace(/\D/g, '');
+      const searchPatterns = buildPhonePatterns(search);
+
+      // Search contacts and leads matching the name, company, or email
+      const [matchedContacts, matchedLeads] = await Promise.all([
+        Contact.find({
+          $or: [
+            { name: searchRegex },
+            { company: searchRegex },
+            { email: searchRegex }
+          ]
+        }).select('_id phone').lean(),
+        Lead.find({
+          $or: [
+            { name: searchRegex },
+            { email: searchRegex }
+          ]
+        }).select('_id phone').lean()
+      ]);
+
+      const contactPhones = [
+        ...matchedContacts.map((c) => c.phone),
+        ...matchedLeads.map((l) => l.phone)
+      ].filter(Boolean);
+
+      const contactPhonePatterns = [...new Set(contactPhones.flatMap((p) => buildPhonePatterns(p)))];
+      const contactIds = matchedContacts.map((c) => c._id);
+
+      const searchConditions = [
+        { phoneNumber: searchRegex },
+        { localNumber: searchRegex },
+        ...(searchPatterns.length > 0 ? [{ phoneNumber: { $in: searchPatterns } }] : []),
+        ...(contactPhonePatterns.length > 0 ? [{ phoneNumber: { $in: contactPhonePatterns } }] : []),
+        ...(contactIds.length > 0 ? [{ contact: { $in: contactIds } }] : [])
+      ];
+
+      if (rawDigits.length >= 3) {
+        searchConditions.push(
+          { phoneNumber: { $regex: escapeRegex(rawDigits), $options: 'i' } },
+          { localNumber: { $regex: escapeRegex(rawDigits), $options: 'i' } }
+        );
+      }
+
+      filters.push({ $or: searchConditions });
     }
 
     const query = filters.length > 1
@@ -258,10 +362,12 @@ export const getCallLogs = async (req, res) => {
     const logs = await CallLog.find(query)
       .populate('user', 'name email role')
       .populate('answeredBy', 'name email')
+      .populate('contact', 'name phone company')
       .sort({ startedAt: -1, _id: -1 })
       .limit(limit + 1);
 
-    const formattedLogs = logs.map(formatCallLog);
+    const contactMap = await resolveContactsForLogs(logs);
+    const formattedLogs = logs.map((log) => formatCallLog(log, contactMap));
     const page = buildPaginatedResponse(
       formattedLogs,
       limit,

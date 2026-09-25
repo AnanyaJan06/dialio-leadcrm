@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, useEffect } from 'react';
-import { CalendarCheck, Copy, FileText, MessageSquare, Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing } from 'lucide-react';
+import { CalendarCheck, Copy, FileText, MessageSquare, Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing, Search, X } from 'lucide-react';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import LoadingSpinner from './LoadingSpinner.jsx';
 import { buildPagedUrl, PAGE_SIZE, parsePagedResponse } from '../utils/pagination.js';
@@ -91,6 +91,10 @@ function CallHistorySkeleton() {
           ))}
         </div>
 
+        <div className="mt-2">
+          <Skeleton height={36} borderRadius={8} />
+        </div>
+
         <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
           <Skeleton height={36} borderRadius={8} />
           <Skeleton height={36} borderRadius={8} />
@@ -146,6 +150,8 @@ function CallHistory() {
   const [activeFilter, setActiveFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('newest');
   const [selectedDate, setSelectedDate] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
@@ -154,7 +160,14 @@ function CallHistory() {
   const [followUpNotice, setFollowUpNotice] = useState({ text: '', type: '' });
   const [expandedTranscriptId, setExpandedTranscriptId] = useState('');
 
-  const fetchCallLogs = useCallback(async ({ reset = false, before = null } = {}) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const fetchCallLogs = useCallback(async ({ reset = false, before = null, search = debouncedSearch } = {}) => {
     try {
       if (reset) {
         setLoading(true);
@@ -163,9 +176,15 @@ function CallHistory() {
         setLoadingMore(true);
       }
 
+      const extraParams = {};
+      if (search) {
+        extraParams.search = search;
+      }
+
       const res = await fetch(buildPagedUrl(`${BACKEND_URL}/api/calls/logs`, {
         limit: PAGE_SIZE,
-        before
+        before,
+        extraParams
       }), {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
@@ -185,22 +204,22 @@ function CallHistory() {
       if (reset) setLoading(false);
       setLoadingMore(false);
     }
-  }, []);
+  }, [debouncedSearch]);
 
   const loadMoreLogs = useCallback(() => {
     if (!hasMore || loading || loadingMore || !nextBefore) return;
-    fetchCallLogs({ before: nextBefore });
-  }, [fetchCallLogs, hasMore, loading, loadingMore, nextBefore]);
+    fetchCallLogs({ before: nextBefore, search: debouncedSearch });
+  }, [debouncedSearch, fetchCallLogs, hasMore, loading, loadingMore, nextBefore]);
 
   useEffect(() => {
-    fetchCallLogs({ reset: true });
-  }, [fetchCallLogs]);
+    fetchCallLogs({ reset: true, search: debouncedSearch });
+  }, [debouncedSearch, fetchCallLogs]);
 
   useEffect(() => {
-    const handler = () => fetchCallLogs({ reset: true });
+    const handler = () => fetchCallLogs({ reset: true, search: debouncedSearch });
     window.addEventListener('refreshCallHistory', handler);
     return () => window.removeEventListener('refreshCallHistory', handler);
-  }, [fetchCallLogs]);
+  }, [debouncedSearch, fetchCallLogs]);
 
   const formatPhoneNumber = (phone) => {
     if (!phone) return 'Unknown';
@@ -275,7 +294,7 @@ function CallHistory() {
 
     setFollowUpNotice({ text: '', type: '' });
     setFollowUpDraft({
-      name: formatPhoneNumber(log.phoneNumber),
+      name: log.contactName || formatPhoneNumber(log.phoneNumber),
       phone: log.phoneNumber,
       callLog: log._id || null,
       note: `Follow up about ${getCallMeta(log).directionLabel.toLowerCase()} call from ${formatDateTime(getCallDate(log))}.`,
@@ -451,6 +470,9 @@ function CallHistory() {
 
 
   const visibleLogs = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const searchDigits = normalizedSearch.replace(/\D/g, '');
+
     return logs
       .filter((log) => {
         const status = log.status?.toLowerCase();
@@ -464,13 +486,34 @@ function CallHistory() {
           ? getDateInputValue(getCallDate(log)) === selectedDate
           : true;
 
-        return matchesType && matchesDate;
+        let matchesSearch = true;
+        if (normalizedSearch) {
+          const phone = String(log.phoneNumber || '').toLowerCase();
+          const localPhone = String(log.localNumber || '').toLowerCase();
+          const formattedPhone = formatPhoneNumber(log.phoneNumber).toLowerCase();
+          const contactName = String(log.contactName || '').toLowerCase();
+          const contactCompany = String(log.contactCompany || '').toLowerCase();
+          const userName = getUserName(log).toLowerCase();
+          const rawPhoneDigits = phone.replace(/\D/g, '');
+
+          matchesSearch = (
+            contactName.includes(normalizedSearch) ||
+            contactCompany.includes(normalizedSearch) ||
+            phone.includes(normalizedSearch) ||
+            formattedPhone.includes(normalizedSearch) ||
+            localPhone.includes(normalizedSearch) ||
+            userName.includes(normalizedSearch) ||
+            (searchDigits.length > 0 && rawPhoneDigits.includes(searchDigits))
+          );
+        }
+
+        return matchesType && matchesDate && matchesSearch;
       })
       .sort((a, b) => {
         const newestFirst = getCallTime(b) - getCallTime(a);
         return sortOrder === 'newest' ? newestFirst : -newestFirst;
       });
-  }, [activeFilter, logs, selectedDate, sortOrder]);
+  }, [activeFilter, logs, searchTerm, selectedDate, sortOrder]);
 
   const activeFilterLabel = callFilters.find((filter) => filter.key === activeFilter)?.label || 'All';
 
@@ -479,7 +522,7 @@ function CallHistory() {
       {loading && <CallHistorySkeleton />}
       {error && <p className="text-sm text-red-400 text-center py-10">{error}</p>}
 
-      {!loading && !error && logs.length > 0 && (
+      {!loading && !error && (logs.length > 0 || searchTerm || selectedDate || activeFilter !== 'all') && (
         <div className="sticky top-0 z-10 bg-[#161B26]/95 px-2 py-2 backdrop-blur border-b border-gray-800">
           <div className="grid grid-cols-4 gap-1 rounded-xl bg-[#0F141F] p-1">
             {callFilters.map((filter) => {
@@ -502,6 +545,29 @@ function CallHistory() {
               );
             })}
           </div>
+
+          <div className="relative mt-2">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search calls by contact name, phone number..."
+              className="h-9 w-full rounded-lg border border-gray-700 bg-[#0F141F] pl-10 pr-9 text-xs font-medium text-white placeholder-gray-500 transition-colors hover:border-gray-600 focus:border-[#059669] focus:outline-none"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                title="Clear search"
+                aria-label="Clear search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
           <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
             <label className="sr-only" htmlFor="call-sort-order">Sort calls</label>
             <select
@@ -539,15 +605,26 @@ function CallHistory() {
         </div>
       )}
 
-      {!loading && !error && logs.length === 0 && (
+      {!loading && !error && logs.length === 0 && !searchTerm && !selectedDate && activeFilter === 'all' && (
         <div className="text-center py-16 text-sm text-gray-400">
           No calls yet. Start making calls!
         </div>
       )}
 
-      {!loading && !error && logs.length > 0 && visibleLogs.length === 0 && (
+      {!loading && !error && (logs.length === 0 || visibleLogs.length === 0) && (searchTerm || selectedDate || activeFilter !== 'all') && (
         <div className="text-center py-16 text-sm text-gray-400">
-          No {activeFilterLabel.toLowerCase()} calls found{selectedDate ? ' for this date' : ''}.
+          <p>No {activeFilter !== 'all' ? activeFilterLabel.toLowerCase() + ' ' : ''}calls found{searchTerm ? ` matching "${searchTerm}"` : ''}{selectedDate ? ' for this date' : ''}.</p>
+          <button
+            type="button"
+            onClick={() => {
+              setSearchTerm('');
+              setSelectedDate('');
+              setActiveFilter('all');
+            }}
+            className="mt-3 rounded-lg border border-gray-700 px-3 py-1.5 text-xs font-semibold text-emerald-400 transition hover:bg-[#1F2533]"
+          >
+            Reset Filters
+          </button>
         </div>
       )}
 
@@ -572,8 +649,8 @@ function CallHistory() {
                   onClick={() => handleMakeCall(log.phoneNumber)}
                   disabled={!canCallNumber(log.phoneNumber)}
                   className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-500/20 bg-[#0F141F]/95 text-emerald-300 shadow-sm transition-colors hover:bg-emerald-500 hover:text-white disabled:cursor-not-allowed disabled:border-gray-700 disabled:text-gray-600"
-                  title={`Call ${formatPhoneNumber(log.phoneNumber)}`}
-                  aria-label={`Call ${formatPhoneNumber(log.phoneNumber)}`}
+                  title={`Call ${log.contactName ? `${log.contactName} (${formatPhoneNumber(log.phoneNumber)})` : formatPhoneNumber(log.phoneNumber)}`}
+                  aria-label={`Call ${log.contactName ? `${log.contactName} (${formatPhoneNumber(log.phoneNumber)})` : formatPhoneNumber(log.phoneNumber)}`}
                 >
                   <PhoneIcon />
                 </button>
@@ -582,8 +659,8 @@ function CallHistory() {
                   onClick={() => handleMessage(log.phoneNumber)}
                   disabled={!canCallNumber(log.phoneNumber)}
                   className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-500/20 bg-[#0F141F]/95 text-emerald-300 shadow-sm transition-colors hover:bg-[#059669] hover:text-white disabled:cursor-not-allowed disabled:border-gray-700 disabled:text-gray-600"
-                  title={`Message ${formatPhoneNumber(log.phoneNumber)}`}
-                  aria-label={`Message ${formatPhoneNumber(log.phoneNumber)}`}
+                  title={`Message ${log.contactName ? `${log.contactName} (${formatPhoneNumber(log.phoneNumber)})` : formatPhoneNumber(log.phoneNumber)}`}
+                  aria-label={`Message ${log.contactName ? `${log.contactName} (${formatPhoneNumber(log.phoneNumber)})` : formatPhoneNumber(log.phoneNumber)}`}
                 >
                   <MessageIcon />
                 </button>
@@ -592,8 +669,8 @@ function CallHistory() {
                   onClick={() => handleOpenFollowUp(log)}
                   disabled={!canCallNumber(log.phoneNumber)}
                   className="flex h-7 w-7 items-center justify-center rounded-lg border border-violet-500/20 bg-[#0F141F]/95 text-violet-300 shadow-sm transition-colors hover:bg-violet-500 hover:text-white disabled:cursor-not-allowed disabled:border-gray-700 disabled:text-gray-600"
-                  title={`Add follow-up for ${formatPhoneNumber(log.phoneNumber)}`}
-                  aria-label={`Add follow-up for ${formatPhoneNumber(log.phoneNumber)}`}
+                  title={`Add follow-up for ${log.contactName ? `${log.contactName} (${formatPhoneNumber(log.phoneNumber)})` : formatPhoneNumber(log.phoneNumber)}`}
+                  aria-label={`Add follow-up for ${log.contactName ? `${log.contactName} (${formatPhoneNumber(log.phoneNumber)})` : formatPhoneNumber(log.phoneNumber)}`}
                 >
                   <FollowUpIcon />
                 </button>
@@ -614,14 +691,26 @@ function CallHistory() {
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <button
-                    type="button"
-                    onClick={() => handleOpenConversation(log.phoneNumber)}
-                    className="block max-w-full truncate text-left text-sm font-semibold text-white transition hover:text-emerald-300"
-                    title="Open conversation"
-                  >
-                    {formatPhoneNumber(log.phoneNumber)}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenConversation(log.phoneNumber)}
+                      className="truncate text-left text-sm font-semibold text-white transition hover:text-emerald-300"
+                      title={log.contactName ? `${log.contactName} (${formatPhoneNumber(log.phoneNumber)})` : 'Open conversation'}
+                    >
+                      {log.contactName || formatPhoneNumber(log.phoneNumber)}
+                    </button>
+                    {log.contactName && (
+                      <span className="text-xs text-gray-400 shrink-0">
+                        ({formatPhoneNumber(log.phoneNumber)})
+                      </span>
+                    )}
+                    {log.contactCompany && (
+                      <span className="rounded bg-[#0F141F] px-1.5 py-0.5 text-[10px] text-gray-400 border border-gray-700/60 shrink-0">
+                        {log.contactCompany}
+                      </span>
+                    )}
+                  </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-gray-400">
                     <span>{meta.directionLabel}</span>
                     <span className="text-gray-600">|</span>
