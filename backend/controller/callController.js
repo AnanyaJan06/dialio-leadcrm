@@ -8,10 +8,8 @@ import { buildCallAccessQuery } from '../utils/callAccess.js';
 import { consolidateAdminCallLogs } from '../utils/consolidateCallLogs.js';
 import { findInboundSession } from '../utils/inboundCallSession.js';
 import { buildPaginatedResponse, parseBeforeDate, parseLimit } from '../utils/pagination.js';
-import { buildPhoneOrFilter, buildPhonePatterns, to10Digits } from '../utils/phoneMatch.js';
+import { buildPhonePatterns, buildPhoneOrFilter } from '../utils/phoneMatch.js';
 import { getAssignedNumberForUser } from '../utils/twilioNumbers.js';
-
-const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const createTeammateCallLogs = async (session, answererId) => {
   const otherUserIds = (session.assignedUserIds || [])
@@ -41,59 +39,19 @@ const createTeammateCallLogs = async (session, answererId) => {
   )));
 };
 
-const resolveContactsForLogs = async (logs = []) => {
-  const phones = [...new Set(logs.map((log) => log.phoneNumber).filter(Boolean))];
-  if (phones.length === 0) return new Map();
-
-  const phonePatterns = [...new Set(phones.flatMap((p) => buildPhonePatterns(p)))];
-
-  const [contacts, leads] = await Promise.all([
-    Contact.find({ phone: { $in: phonePatterns } }).select('_id name phone company').lean(),
-    Lead.find({ phone: { $in: phonePatterns } }).select('_id name phone').lean()
-  ]);
-
-  const map = new Map();
-
-  // Populate from leads first
-  for (const lead of leads) {
-    if (!lead.phone) continue;
-    const info = { name: lead.name, company: '', leadId: lead._id };
-    const p10 = to10Digits(lead.phone);
-    if (p10) map.set(p10, info);
-    map.set(lead.phone, info);
-    for (const pat of buildPhonePatterns(lead.phone)) {
-      if (!map.has(pat)) map.set(pat, info);
-    }
-  }
-
-  // Populate from contacts second (higher priority than leads)
-  for (const contact of contacts) {
-    if (!contact.phone) continue;
-    const info = { name: contact.name, company: contact.company || '', contactId: contact._id };
-    const p10 = to10Digits(contact.phone);
-    if (p10) map.set(p10, info);
-    map.set(contact.phone, info);
-    for (const pat of buildPhonePatterns(contact.phone)) {
-      map.set(pat, info);
-    }
-  }
-
-  return map;
-};
-
-const formatCallLog = (log, contactMap = new Map()) => {
+const formatCallLog = (log, phoneMap = new Map()) => {
   const item = log.toObject ? log.toObject() : log;
-  const directContact = item.contact && typeof item.contact === 'object' ? item.contact : null;
-  const digits10 = to10Digits(item.phoneNumber);
-  const matchedContact = directContact || contactMap.get(digits10) || contactMap.get(item.phoneNumber);
+  const digits = String(item.phoneNumber || '').replace(/\D/g, '');
+  const digits10 = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+  const phoneInfo = phoneMap.get(item.phoneNumber) || phoneMap.get(digits) || phoneMap.get(digits10) || {};
 
   return {
     ...item,
     userName: item.user?.name || 'Unknown User',
     userEmail: item.user?.email || '',
     answeredByName: item.answeredBy?.name || '',
-    contactName: matchedContact?.name || item.contactName || '',
-    contactCompany: matchedContact?.company || item.contactCompany || ''
+    contactName: phoneInfo.contactName || '',
+    contactCompany: phoneInfo.contactCompany || ''
   };
 };
 
@@ -122,14 +80,8 @@ export const saveCallLog = async (req, res) => {
       resolvedAnsweredBy = session?.answeredBy || undefined;
     }
 
-    const phonePatterns = buildPhonePatterns(phoneNumber);
-    const existingContact = await Contact.findOne({
-      phone: { $in: phonePatterns }
-    }).select('_id');
-
     const callLogData = {
       user: req.user.id,
-      contact: existingContact?._id || undefined,
       phoneNumber,
       localNumber: resolvedLocalNumber,
       callType: resolvedCallType,
@@ -304,51 +256,55 @@ export const getCallLogs = async (req, res) => {
     }
 
     if (search) {
-      const searchRegex = { $regex: escapeRegex(search), $options: 'i' };
-      const rawDigits = search.replace(/\D/g, '');
-      const searchPatterns = buildPhonePatterns(search);
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const searchRegex = new RegExp(escaped, 'i');
+      const searchDigits = search.replace(/\D/g, '');
 
-      // Search contacts and leads matching the name, company, or email
-      const [matchedContacts, matchedLeads] = await Promise.all([
-        Contact.find({
-          $or: [
-            { name: searchRegex },
-            { company: searchRegex },
-            { email: searchRegex }
-          ]
-        }).select('_id phone').lean(),
-        Lead.find({
-          $or: [
-            { name: searchRegex },
-            { email: searchRegex }
-          ]
-        }).select('_id phone').lean()
-      ]);
+      const matchingUsers = await User.find({
+        $or: [{ name: searchRegex }, { email: searchRegex }]
+      }).select('_id');
+      const matchingUserIds = matchingUsers.map((u) => u._id);
 
-      const contactPhones = [
-        ...matchedContacts.map((c) => c.phone),
-        ...matchedLeads.map((l) => l.phone)
+      const contactQuery = {
+        $or: [{ name: searchRegex }, { company: searchRegex }]
+      };
+      if (req.user.role !== 'admin') {
+        contactQuery.user = req.user.id;
+      }
+      const matchingContacts = await Contact.find(contactQuery).select('phone');
+
+      const leadQuery = {
+        $or: [{ name: searchRegex }, { partRequested: searchRegex }]
+      };
+      const matchingLeads = await Lead.find(leadQuery).select('phone');
+
+      const matchedPhones = [
+        ...matchingContacts.map((c) => c.phone),
+        ...matchingLeads.map((l) => l.phone)
       ].filter(Boolean);
 
-      const contactPhonePatterns = [...new Set(contactPhones.flatMap((p) => buildPhonePatterns(p)))];
-      const contactIds = matchedContacts.map((c) => c._id);
+      const matchedPhonePatterns = matchedPhones.flatMap(buildPhonePatterns);
 
-      const searchConditions = [
+      const searchOr = [
         { phoneNumber: searchRegex },
-        { localNumber: searchRegex },
-        ...(searchPatterns.length > 0 ? [{ phoneNumber: { $in: searchPatterns } }] : []),
-        ...(contactPhonePatterns.length > 0 ? [{ phoneNumber: { $in: contactPhonePatterns } }] : []),
-        ...(contactIds.length > 0 ? [{ contact: { $in: contactIds } }] : [])
+        { localNumber: searchRegex }
       ];
 
-      if (rawDigits.length >= 3) {
-        searchConditions.push(
-          { phoneNumber: { $regex: escapeRegex(rawDigits), $options: 'i' } },
-          { localNumber: { $regex: escapeRegex(rawDigits), $options: 'i' } }
-        );
+      if (searchDigits.length >= 3) {
+        searchOr.push({ phoneNumber: new RegExp(searchDigits) });
+        searchOr.push({ localNumber: new RegExp(searchDigits) });
       }
 
-      filters.push({ $or: searchConditions });
+      if (matchingUserIds.length > 0) {
+        searchOr.push({ user: { $in: matchingUserIds } });
+        searchOr.push({ answeredBy: { $in: matchingUserIds } });
+      }
+
+      if (matchedPhonePatterns.length > 0) {
+        searchOr.push({ phoneNumber: { $in: matchedPhonePatterns } });
+      }
+
+      filters.push({ $or: searchOr });
     }
 
     const query = filters.length > 1
@@ -362,12 +318,39 @@ export const getCallLogs = async (req, res) => {
     const logs = await CallLog.find(query)
       .populate('user', 'name email role')
       .populate('answeredBy', 'name email')
-      .populate('contact', 'name phone company')
       .sort({ startedAt: -1, _id: -1 })
       .limit(limit + 1);
 
-    const contactMap = await resolveContactsForLogs(logs);
-    const formattedLogs = logs.map((log) => formatCallLog(log, contactMap));
+    const uniquePhones = [...new Set(logs.map((l) => l.phoneNumber).filter(Boolean))];
+    const phoneMap = new Map();
+
+    if (uniquePhones.length > 0) {
+      const allPhonePatterns = uniquePhones.flatMap(buildPhonePatterns);
+      const [contacts, leads] = await Promise.all([
+        Contact.find({ phone: { $in: allPhonePatterns } }).select('name company phone user'),
+        Lead.find({ phone: { $in: allPhonePatterns } }).select('name phone')
+      ]);
+
+      leads.forEach((l) => {
+        buildPhonePatterns(l.phone).forEach((p) => {
+          if (!phoneMap.has(p)) {
+            phoneMap.set(p, { contactName: l.name, contactCompany: '' });
+          }
+        });
+      });
+
+      contacts.forEach((c) => {
+        buildPhonePatterns(c.phone).forEach((p) => {
+          const existing = phoneMap.get(p) || {};
+          phoneMap.set(p, {
+            contactName: c.name || existing.contactName || '',
+            contactCompany: c.company || existing.contactCompany || ''
+          });
+        });
+      });
+    }
+
+    const formattedLogs = logs.map((log) => formatCallLog(log, phoneMap));
     const page = buildPaginatedResponse(
       formattedLogs,
       limit,
