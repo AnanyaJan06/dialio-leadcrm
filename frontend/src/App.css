@@ -180,6 +180,24 @@ html[data-theme="day"] .sms-toast {
   border-color: #a7f3d0;
 }
 
+html[data-theme="day"] .dialer-sidebar-status-box.status-error {
+  background-color: #fffbeb;
+  border-color: #fcd34d;
+}
+
+html[data-theme="day"] .dialer-sidebar-status-box.status-connecting {
+  background-color: #f0f9ff;
+  border-color: #bae6fd;
+}
+
+html[data-theme="day"] .dialer-sidebar-status-box .status-title {
+  color: #172033;
+}
+
+html[data-theme="day"] .dialer-sidebar-status-box .status-text {
+  color: #4b5563;
+}
+
 html[data-theme="day"] input,
 html[data-theme="day"] textarea,
 html[data-theme="day"] select {
