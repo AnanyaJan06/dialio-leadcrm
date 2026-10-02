@@ -78,31 +78,12 @@ const MessageIcon = () => <MessageSquare className="h-4 w-4" aria-hidden="true" 
 const CopyIcon = () => <Copy className="h-4 w-4" aria-hidden="true" />;
 const FollowUpIcon = () => <CalendarCheck className="h-4 w-4" aria-hidden="true" />;
 const TranscriptIcon = () => <FileText className="h-4 w-4" aria-hidden="true" />;
-function CallHistorySkeleton() {
+function CallHistoryRowsSkeleton() {
   const rows = Array.from({ length: 7 }, (_, index) => index);
 
   return (
     <AppSkeletonTheme>
-      <div role="status" aria-label="Loading call history">
-      <div className="sticky top-0 z-10 bg-[#161B26]/95 px-2 py-2 backdrop-blur border-b border-gray-800">
-        <div className="grid grid-cols-4 gap-1 rounded-xl bg-[#0F141F] p-1">
-          {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} height={32} borderRadius={8} />
-          ))}
-        </div>
-
-        <div className="mt-2">
-          <Skeleton height={36} borderRadius={8} />
-        </div>
-
-        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
-          <Skeleton height={36} borderRadius={8} />
-          <Skeleton height={36} borderRadius={8} />
-          <Skeleton width={64} height={36} borderRadius={8} className="hidden sm:block" />
-        </div>
-      </div>
-
-      <div className="divide-y divide-gray-800">
+      <div className="divide-y divide-gray-800" role="status" aria-label="Loading call history">
         {rows.map((row) => (
           <div key={row} className="px-3 py-3.5 sm:px-4">
             <div className="flex items-start gap-3">
@@ -120,7 +101,6 @@ function CallHistorySkeleton() {
             <Skeleton width={80} height={12} className="ml-auto mt-2 block" />
           </div>
         ))}
-      </div>
       </div>
     </AppSkeletonTheme>
   );
@@ -150,8 +130,8 @@ function CallHistory() {
   const [activeFilter, setActiveFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('newest');
   const [selectedDate, setSelectedDate] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
@@ -160,14 +140,7 @@ function CallHistory() {
   const [followUpNotice, setFollowUpNotice] = useState({ text: '', type: '' });
   const [expandedTranscriptId, setExpandedTranscriptId] = useState('');
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchTerm.trim());
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
-
-  const fetchCallLogs = useCallback(async ({ reset = false, before = null, search = debouncedSearch } = {}) => {
+  const fetchCallLogs = useCallback(async ({ reset = false, before = null, search = appliedSearch } = {}) => {
     try {
       if (reset) {
         setLoading(true);
@@ -204,22 +177,46 @@ function CallHistory() {
       if (reset) setLoading(false);
       setLoadingMore(false);
     }
-  }, [debouncedSearch]);
+  }, [appliedSearch]);
 
   const loadMoreLogs = useCallback(() => {
     if (!hasMore || loading || loadingMore || !nextBefore) return;
-    fetchCallLogs({ before: nextBefore, search: debouncedSearch });
-  }, [debouncedSearch, fetchCallLogs, hasMore, loading, loadingMore, nextBefore]);
+    fetchCallLogs({ before: nextBefore, search: appliedSearch });
+  }, [appliedSearch, fetchCallLogs, hasMore, loading, loadingMore, nextBefore]);
 
   useEffect(() => {
-    fetchCallLogs({ reset: true, search: debouncedSearch });
-  }, [debouncedSearch, fetchCallLogs]);
+    fetchCallLogs({ reset: true, search: appliedSearch });
+  }, [appliedSearch, fetchCallLogs]);
 
   useEffect(() => {
-    const handler = () => fetchCallLogs({ reset: true, search: debouncedSearch });
+    const handler = () => fetchCallLogs({ reset: true, search: appliedSearch });
     window.addEventListener('refreshCallHistory', handler);
     return () => window.removeEventListener('refreshCallHistory', handler);
-  }, [debouncedSearch, fetchCallLogs]);
+  }, [appliedSearch, fetchCallLogs]);
+
+  const handleSearchSubmit = (event) => {
+    if (event) event.preventDefault();
+    const trimmed = searchInput.trim();
+    if (trimmed !== appliedSearch) {
+      setAppliedSearch(trimmed);
+    } else {
+      fetchCallLogs({ reset: true, search: trimmed });
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchInput('');
+    if (appliedSearch !== '') {
+      setAppliedSearch('');
+    }
+  };
+
+  const handleResetFilters = () => {
+    setSearchInput('');
+    setAppliedSearch('');
+    setSelectedDate('');
+    setActiveFilter('all');
+  };
 
   const formatPhoneNumber = (phone) => {
     if (!phone) return 'Unknown';
@@ -470,7 +467,7 @@ function CallHistory() {
 
 
   const visibleLogs = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const normalizedSearch = appliedSearch.trim().toLowerCase();
     const searchDigits = normalizedSearch.replace(/\D/g, '');
 
     return logs
@@ -495,6 +492,7 @@ function CallHistory() {
           const contactCompany = String(log.contactCompany || '').toLowerCase();
           const userName = getUserName(log).toLowerCase();
           const rawPhoneDigits = phone.replace(/\D/g, '');
+          const rawLocalPhoneDigits = localPhone.replace(/\D/g, '');
 
           matchesSearch = (
             contactName.includes(normalizedSearch) ||
@@ -503,7 +501,10 @@ function CallHistory() {
             formattedPhone.includes(normalizedSearch) ||
             localPhone.includes(normalizedSearch) ||
             userName.includes(normalizedSearch) ||
-            (searchDigits.length > 0 && rawPhoneDigits.includes(searchDigits))
+            (searchDigits.length > 0 && (
+              rawPhoneDigits.includes(searchDigits) ||
+              rawLocalPhoneDigits.includes(searchDigits)
+            ))
           );
         }
 
@@ -513,114 +514,129 @@ function CallHistory() {
         const newestFirst = getCallTime(b) - getCallTime(a);
         return sortOrder === 'newest' ? newestFirst : -newestFirst;
       });
-  }, [activeFilter, logs, searchTerm, selectedDate, sortOrder]);
+  }, [activeFilter, appliedSearch, logs, selectedDate, sortOrder]);
 
   const activeFilterLabel = callFilters.find((filter) => filter.key === activeFilter)?.label || 'All';
 
   return (
     <div className="flex-1 overflow-auto thin-scrollbar">
-      {loading && <CallHistorySkeleton />}
-      {error && <p className="text-sm text-red-400 text-center py-10">{error}</p>}
+      {/* Sticky Top Header: Always mounted to prevent unmounting and losing focus */}
+      <div className="sticky top-0 z-10 bg-[#161B26]/95 px-2 py-2 backdrop-blur border-b border-gray-800">
+        <div className="grid grid-cols-4 gap-1 rounded-xl bg-[#0F141F] p-1">
+          {callFilters.map((filter) => {
+            const isActive = activeFilter === filter.key;
 
-      {!loading && !error && (logs.length > 0 || searchTerm || selectedDate || activeFilter !== 'all') && (
-        <div className="sticky top-0 z-10 bg-[#161B26]/95 px-2 py-2 backdrop-blur border-b border-gray-800">
-          <div className="grid grid-cols-4 gap-1 rounded-xl bg-[#0F141F] p-1">
-            {callFilters.map((filter) => {
-              const isActive = activeFilter === filter.key;
+            return (
+              <button
+                key={filter.key}
+                type="button"
+                onClick={() => setActiveFilter(filter.key)}
+                className={`h-8 rounded-lg text-xs font-semibold transition-colors ${
+                  isActive
+                    ? 'bg-[#059669] text-white shadow-sm'
+                    : 'text-gray-400 hover:bg-[#1F2533] hover:text-white'
+                }`}
+                aria-pressed={isActive}
+              >
+                {filter.label}
+              </button>
+            );
+          })}
+        </div>
 
-              return (
-                <button
-                  key={filter.key}
-                  type="button"
-                  onClick={() => setActiveFilter(filter.key)}
-                  className={`h-8 rounded-lg text-xs font-semibold transition-colors ${
-                    isActive
-                      ? 'bg-[#059669] text-white shadow-sm'
-                      : 'text-gray-400 hover:bg-[#1F2533] hover:text-white'
-                  }`}
-                  aria-pressed={isActive}
-                >
-                  {filter.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="relative mt-2">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search calls by contact name, phone number..."
-              className="h-9 w-full rounded-lg border border-gray-700 bg-[#0F141F] pl-10 pr-9 text-xs font-medium text-white placeholder-gray-500 transition-colors hover:border-gray-600 focus:border-[#059669] focus:outline-none"
-            />
-            {searchTerm && (
+        <form onSubmit={handleSearchSubmit} className="relative mt-2">
+          <button
+            type="submit"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+            title="Search calls"
+            aria-label="Search calls"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="Search calls by contact name, phone number... (Press Enter)"
+            className="h-9 w-full rounded-lg border border-gray-700 bg-[#0F141F] pl-9 pr-24 text-xs font-medium text-white placeholder-gray-500 transition-colors hover:border-gray-600 focus:border-[#059669] focus:outline-none"
+          />
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+            {searchInput && (
               <button
                 type="button"
-                onClick={() => setSearchTerm('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                onClick={handleClearSearch}
+                className="p-1 text-gray-400 hover:text-white transition-colors"
                 title="Clear search"
                 aria-label="Clear search"
               >
                 <X className="h-4 w-4" />
               </button>
             )}
-          </div>
-
-          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
-            <label className="sr-only" htmlFor="call-sort-order">Sort calls</label>
-            <select
-              id="call-sort-order"
-              value={sortOrder}
-              onChange={(event) => setSortOrder(event.target.value)}
-              className="h-9 rounded-lg border border-gray-700 bg-[#0F141F] px-3 text-xs font-medium text-white transition-colors hover:border-gray-600 focus:border-[#059669]"
+            <button
+              type="submit"
+              className="rounded bg-[#059669] hover:bg-[#047857] px-2.5 py-1 text-[11px] font-semibold text-white transition-colors shadow-sm"
+              title="Search calls"
             >
-              {sortOptions.map((option) => (
-                <option key={option.key} value={option.key}>
-                  Sort: {option.label}
-                </option>
-              ))}
-            </select>
-
-            <label className="sr-only" htmlFor="call-date-filter">Filter calls by date</label>
-            <input
-              id="call-date-filter"
-              type="date"
-              value={selectedDate}
-              onChange={(event) => setSelectedDate(event.target.value)}
-              className="call-history-date-input h-9 rounded-lg border border-gray-700 bg-[#0F141F] px-3 text-xs font-medium text-white transition-colors hover:border-gray-600 focus:border-[#059669]"
-            />
-
-            {selectedDate && (
-              <button
-                type="button"
-                onClick={() => setSelectedDate('')}
-                className="h-9 rounded-lg border border-gray-700 px-3 text-xs font-semibold text-gray-300 transition-colors hover:bg-[#1F2533] hover:text-white"
-              >
-                Clear
-              </button>
-            )}
+              Search
+            </button>
           </div>
-        </div>
-      )}
+        </form>
 
-      {!loading && !error && logs.length === 0 && !searchTerm && !selectedDate && activeFilter === 'all' && (
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
+          <label className="sr-only" htmlFor="call-sort-order">Sort calls</label>
+          <select
+            id="call-sort-order"
+            value={sortOrder}
+            onChange={(event) => setSortOrder(event.target.value)}
+            className="h-9 rounded-lg border border-gray-700 bg-[#0F141F] px-3 text-xs font-medium text-white transition-colors hover:border-gray-600 focus:border-[#059669]"
+          >
+            {sortOptions.map((option) => (
+              <option key={option.key} value={option.key}>
+                Sort: {option.label}
+              </option>
+            ))}
+          </select>
+
+          <label className="sr-only" htmlFor="call-date-filter">Filter calls by date</label>
+          <input
+            id="call-date-filter"
+            type="date"
+            value={selectedDate}
+            onChange={(event) => setSelectedDate(event.target.value)}
+            className="call-history-date-input h-9 rounded-lg border border-gray-700 bg-[#0F141F] px-3 text-xs font-medium text-white transition-colors hover:border-gray-600 focus:border-[#059669]"
+          />
+
+          {selectedDate && (
+            <button
+              type="button"
+              onClick={() => setSelectedDate('')}
+              className="h-9 rounded-lg border border-gray-700 px-3 text-xs font-semibold text-gray-300 transition-colors hover:bg-[#1F2533] hover:text-white"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      {loading && <CallHistoryRowsSkeleton />}
+      {error && <p className="text-sm text-red-400 text-center py-10">{error}</p>}
+
+      {!loading && !error && logs.length === 0 && !appliedSearch && !selectedDate && activeFilter === 'all' && (
         <div className="text-center py-16 text-sm text-gray-400">
           No calls yet. Start making calls!
         </div>
       )}
 
-      {!loading && !error && (logs.length === 0 || visibleLogs.length === 0) && (searchTerm || selectedDate || activeFilter !== 'all') && (
+      {!loading && !error && (logs.length === 0 || visibleLogs.length === 0) && (appliedSearch || selectedDate || activeFilter !== 'all') && (
         <div className="text-center py-16 text-sm text-gray-400">
-          <p>No {activeFilter !== 'all' ? activeFilterLabel.toLowerCase() + ' ' : ''}calls found{searchTerm ? ` matching "${searchTerm}"` : ''}{selectedDate ? ' for this date' : ''}.</p>
+          <p>
+            No {activeFilter !== 'all' ? activeFilterLabel.toLowerCase() + ' ' : ''}calls found
+            {appliedSearch ? ` matching "${appliedSearch}"` : ''}
+            {selectedDate ? ' for this date' : ''}.
+          </p>
           <button
             type="button"
-            onClick={() => {
-              setSearchTerm('');
-              setSelectedDate('');
-              setActiveFilter('all');
-            }}
+            onClick={handleResetFilters}
             className="mt-3 rounded-lg border border-gray-700 px-3 py-1.5 text-xs font-semibold text-emerald-400 transition hover:bg-[#1F2533]"
           >
             Reset Filters
@@ -628,7 +644,8 @@ function CallHistory() {
         </div>
       )}
 
-      <div className="divide-y divide-gray-800">
+      {!loading && !error && visibleLogs.length > 0 && (
+        <div className="divide-y divide-gray-800">
         {visibleLogs.map((log) => {
           const meta = getCallMeta(log);
           const logId = log._id || log.callSid;
@@ -788,7 +805,8 @@ function CallHistory() {
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
 
       {!loading && !error && hasMore && (
         <div className="px-4 py-4 text-center">
