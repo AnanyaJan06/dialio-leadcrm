@@ -149,9 +149,46 @@ html[data-theme="day"] .internal-message-inbound .internal-message-time {
 }
 
 html[data-theme="day"] .dialer-panel,
+html[data-theme="day"] .dialer-floating-card,
+html[data-theme="day"] .dialer-floating-card .bg-\[\#161B28\],
 html[data-theme="day"] .dialer-panel .bg-\[\#161B28\] {
   background-color: #ffffff;
   color: #172033;
+}
+
+html[data-theme="day"] .dialer-floating-card {
+  border-color: #d7e0eb;
+  box-shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.15), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
+}
+
+html[data-theme="day"] .dialer-floating-card .bg-\[\#1C2333\],
+html[data-theme="day"] .dialer-floating-card .bg-\[\#1C2333\]\/70 {
+  background-color: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+html[data-theme="day"] .dialer-minimized-pill {
+  background-color: rgba(255, 255, 255, 0.95);
+  color: #172033;
+  border-color: #cbd5e1;
+  box-shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.15), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
+}
+
+html[data-theme="day"] .dialer-minimized-pill .text-white {
+  color: #0f172a;
+}
+
+html[data-theme="day"] .dialer-minimized-pill .bg-gray-800 {
+  background-color: #e2e8f0;
+  color: #1e293b;
+}
+
+html[data-theme="day"] .dialer-minimized-pill .hover\:bg-gray-700:hover {
+  background-color: #cbd5e1;
+}
+
+html[data-theme="day"] .dialer-floating-card .text-white {
+  color: #0f172a;
 }
 
 html[data-theme="day"] .dialer-call-card {
@@ -159,17 +196,22 @@ html[data-theme="day"] .dialer-call-card {
   color: #172033;
 }
 
+html[data-theme="day"] .dialer-floating-card .bg-gray-800,
+html[data-theme="day"] .dialer-floating-card .bg-\[\#1F2937\],
 html[data-theme="day"] .dialer-panel .bg-gray-800,
 html[data-theme="day"] .dialer-panel .bg-\[\#1F2937\] {
   background-color: #eef3f8;
   color: #172033;
 }
 
+html[data-theme="day"] .dialer-floating-card .hover\:bg-gray-700:hover,
+html[data-theme="day"] .dialer-floating-card .hover\:bg-\[\#374151\]:hover,
 html[data-theme="day"] .dialer-panel .hover\:bg-gray-700:hover,
 html[data-theme="day"] .dialer-panel .hover\:bg-\[\#374151\]:hover {
   background-color: #dfe8f2;
 }
 
+html[data-theme="day"] .dialer-floating-card .active\:bg-\[\#4B5563\]:active,
 html[data-theme="day"] .dialer-panel .active\:bg-\[\#4B5563\]:active {
   background-color: #cfdae7;
 }
@@ -1165,8 +1207,9 @@ html[data-theme="day"] ::-webkit-scrollbar-thumb:hover {
   opacity: 1;
 }
 
+.dialer-floating-card,
 .dialer-panel {
-  transform-origin: center;
+  transform-origin: bottom right;
   transition:
     opacity 220ms ease,
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -1193,6 +1236,7 @@ html[data-theme="day"] ::-webkit-scrollbar-thumb:hover {
   transform: translate(calc(50vw - 130px), calc(50vh - 90px)) scale(0.22);
 }
 
+.dialer-minimized-pill,
 .dialer-minimized-card {
   animation: dialerMiniIn 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -1254,10 +1298,12 @@ html[data-theme="day"] ::-webkit-scrollbar-thumb:hover {
 
 @media (prefers-reduced-motion: reduce) {
   .dialer-backdrop,
+  .dialer-floating-card,
   .dialer-panel {
     transition: none;
   }
 
+  .dialer-minimized-pill,
   .dialer-minimized-card,
   .modal-backdrop,
   .modal-panel,

@@ -160,7 +160,8 @@ function App() {
     const handleCallContact = (event) => {
       const { phoneNumber } = event.detail;
       setSelectedPhoneNumber(phoneNumber);
-      setShowDialerModal(true);        // Open Dialer as popup
+      setShowDialerModal(true);
+      window.dispatchEvent(new Event('restoreDialer'));
     };
     window.addEventListener('callContact', handleCallContact);
     return () => window.removeEventListener('callContact', handleCallContact);
@@ -173,6 +174,7 @@ function App() {
 
       setSelectedPhoneNumber(phoneNumber);
       setShowDialerModal(true);
+      window.dispatchEvent(new Event('restoreDialer'));
     };
 
     window.addEventListener('pasteNumberOnDialer', handlePasteNumberOnDialer);
@@ -461,6 +463,7 @@ function App() {
   const openNewCall = () => {
     setSelectedPhoneNumber('');
     setShowDialerModal(true);
+    window.dispatchEvent(new Event('restoreDialer'));
   };
 
   const handleLogout = async () => {
