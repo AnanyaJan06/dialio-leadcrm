@@ -160,8 +160,27 @@ function Dialer({ selectedPhoneNumber = '', isOpen = true, onClose, currentUser 
   const deviceRef = useRef(null);
   const tokenRefreshRef = useRef(null);
   const retryDeviceRegistrationRef = useRef(async () => {});
+  const resetCallRef = useRef(() => {});
   const panelRef = useRef(null);
   const dragDataRef = useRef({ isDragging: false, startX: 0, startY: 0, originX: 0, originY: 0 });
+
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const startTimer = (startTime = Date.now()) => {
+    stopTimer();
+    startTimeRef.current = startTime;
+    setDuration(Math.max(0, Math.floor((Date.now() - startTime) / 1000)));
+    timerRef.current = setInterval(() => {
+      if (startTimeRef.current) {
+        setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      }
+    }, 1000);
+  };
 
   const shouldShowFullDialer = (isOpen || isCalling) && !isMinimized;
   const shouldShowMinimized = (isOpen || isCalling) && isMinimized;
@@ -363,7 +382,7 @@ function Dialer({ selectedPhoneNumber = '', isOpen = true, onClose, currentUser 
       setIncomingCall(null);
       setIsIncomingMinimized(false);
       setConnection(null);
-      resetCall();
+      resetCallRef.current();
     };
 
     window.addEventListener('callAnsweredByTeammate', handleTeammateAnswered);
@@ -458,15 +477,23 @@ function Dialer({ selectedPhoneNumber = '', isOpen = true, onClose, currentUser 
     return () => clearTimeout(dialerAnimationRef.current);
   }, [shouldShowFullDialer, shouldRenderDialer]);
 
-  // Duration Timer
+  // Cleanup timer on unmount
   useEffect(() => {
-    if (startTimeRef.current) {
-      timerRef.current = setInterval(() => {
+    return () => {
+      stopTimer();
+    };
+  }, []);
+
+  // Synchronize timer on tab visibility change
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && startTimeRef.current) {
         setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
-      }, 1000);
-    }
-    return () => clearInterval(timerRef.current);
-  }, [isCalling]);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   // Clamp dragged position on window resize
   useEffect(() => {
@@ -821,6 +848,7 @@ function Dialer({ selectedPhoneNumber = '', isOpen = true, onClose, currentUser 
     setIsCalling(true);
     setCallStatus('Ringing...');
     setDuration(0);
+    stopTimer();
     startTimeRef.current = null;
 
     try {
@@ -834,14 +862,36 @@ function Dialer({ selectedPhoneNumber = '', isOpen = true, onClose, currentUser 
         logged: false
       };
 
-      conn.on('accept', () => {
+      const handleOutboundAccept = () => {
+        if (activeCallRef.current?.accepted) return;
         setCallStatus('Connected');
-        startTimeRef.current = Date.now();
+        startTimer();
         activeCallRef.current = {
-          ...activeCallRef.current,
+          ...(activeCallRef.current || {}),
           accepted: true,
           callSid: conn?.parameters?.CallSid || activeCallRef.current?.callSid || ''
         };
+      };
+
+      const isAlreadyOpen = (typeof conn.state === 'function' && conn.state() === 'open') ||
+                            (typeof conn.status === 'function' && conn.status() === 'open');
+
+      if (isAlreadyOpen) {
+        handleOutboundAccept();
+      } else {
+        conn.on('accept', handleOutboundAccept);
+      }
+
+      conn.on('ringing', () => {
+        setCallStatus('Ringing...');
+      });
+
+      conn.on('reconnecting', () => {
+        setCallStatus('Reconnecting...');
+      });
+
+      conn.on('reconnected', () => {
+        setCallStatus('Connected');
       });
 
       conn.on('disconnect', () => handleCallEnd(conn));
@@ -857,6 +907,8 @@ function Dialer({ selectedPhoneNumber = '', isOpen = true, onClose, currentUser 
       ? Math.floor((Date.now() - startTimeRef.current) / 1000)
       : 0;
 
+    stopTimer();
+
     await logCall({
       phoneNumber: overrides.phoneNumber || activeCallRef.current?.phoneNumber || phoneNumber.trim(),
       localNumber: overrides.localNumber || activeCallRef.current?.localNumber || '',
@@ -870,6 +922,8 @@ function Dialer({ selectedPhoneNumber = '', isOpen = true, onClose, currentUser 
   };
 
   const resetCall = () => {
+    stopTimer();
+    startTimeRef.current = null;
     setIsCalling(false);
     setCallStatus(isDeviceReady ? 'Ready' : 'Device offline');
     setDuration(0);
@@ -880,9 +934,9 @@ function Dialer({ selectedPhoneNumber = '', isOpen = true, onClose, currentUser 
     setShowKeypad(false);
     setIsMinimized(false);
     setIsIncomingMinimized(false);
-    startTimeRef.current = null;
-    if (timerRef.current) clearInterval(timerRef.current);
   };
+
+  resetCallRef.current = resetCall;
 
   const handleMinimizeDialer = () => {
     setIsMinimized(true);
@@ -975,7 +1029,7 @@ function Dialer({ selectedPhoneNumber = '', isOpen = true, onClose, currentUser 
       setPhoneNumber(activeCallRef.current?.phoneNumber || '');
       setIsCalling(true);
       setCallStatus('Connected');
-      startTimeRef.current = Date.now();
+      startTimer();
     }
   };
 
@@ -1422,7 +1476,7 @@ function Dialer({ selectedPhoneNumber = '', isOpen = true, onClose, currentUser 
                   <p className="text-sm font-medium text-white mb-0.5 break-all">{phoneNumber}</p>
                   <p className={`text-xs text-emerald-400 font-medium ${showKeypad ? 'mb-2' : 'mb-3'}`}>{callStatus}</p>
 
-                  {startTimeRef.current && !showKeypad && (
+                  {!showKeypad && (
                     <p className="text-3xl font-mono font-light text-white mb-5 tracking-tight">
                       {formatDuration(duration)}
                     </p>
