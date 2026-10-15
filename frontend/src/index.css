@@ -25,3 +25,31 @@
 .thin-scrollbar::-webkit-scrollbar {
   width: 5px;
 }
+
+/* Mobile Optimizations */
+html, body {
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@supports (padding-top: env(safe-area-inset-top)) {
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Touch friendly scrolling */
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Prevent accidental text selection on mobile action controls */
+.tap-control {
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}

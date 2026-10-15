@@ -660,7 +660,7 @@ function CallHistory() {
               key={logId}
               className="group relative px-3 py-3.5 transition-colors hover:bg-[#1F2533] sm:px-4"
             >
-              <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+              <div className="absolute right-2 top-2.5 sm:right-3 sm:top-3 z-10 flex items-center gap-1 opacity-100 sm:opacity-0 sm:pointer-events-none sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 transition-opacity">
                 <button
                   type="button"
                   onClick={() => handleMakeCall(log.phoneNumber)}
@@ -702,7 +702,7 @@ function CallHistory() {
                 </button>
               </div>
 
-              <div className="flex items-start gap-3 pr-0 sm:pr-32">
+              <div className="flex items-start gap-3 pr-28 sm:pr-32">
                 <div className={`w-9 h-9 rounded-xl flex items-center justify-center ring-1 shrink-0 ${meta.iconClass}`}>
                   <DirectionIcon type={meta.visualType} />
                 </div>

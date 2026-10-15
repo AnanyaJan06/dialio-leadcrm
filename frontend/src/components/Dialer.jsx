@@ -1254,7 +1254,7 @@ function Dialer({ selectedPhoneNumber = '', isOpen = true, onClose, currentUser 
       {shouldShowMinimized && (
         isCalling ? (
           <div
-            className="dialer-minimized-pill fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50 flex items-center gap-2 rounded-2xl border border-emerald-500/40 bg-[#161B28]/95 backdrop-blur-md px-3.5 py-2.5 shadow-2xl ring-1 ring-emerald-500/20 text-white"
+            className="dialer-minimized-pill fixed bottom-4 right-2 sm:right-4 md:bottom-6 md:right-6 z-50 flex items-center gap-2 rounded-2xl border border-emerald-500/40 bg-[#161B28]/95 backdrop-blur-md px-3.5 py-2.5 shadow-2xl ring-1 ring-emerald-500/20 text-white max-w-[calc(100vw-1rem)]"
           >
             {/* Click to expand */}
             <button
@@ -1328,7 +1328,7 @@ function Dialer({ selectedPhoneNumber = '', isOpen = true, onClose, currentUser 
           </div>
         ) : (
           <div
-            className="dialer-minimized-pill fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50 flex items-center gap-2.5 rounded-full border border-gray-700/80 bg-[#161B28]/95 backdrop-blur-md px-3.5 py-2 shadow-2xl text-white hover:border-emerald-500/40 transition"
+            className="dialer-minimized-pill fixed bottom-4 right-2 sm:right-4 md:bottom-6 md:right-6 z-50 flex items-center gap-2.5 rounded-full border border-gray-700/80 bg-[#161B28]/95 backdrop-blur-md px-3.5 py-2 shadow-2xl text-white hover:border-emerald-500/40 transition max-w-[calc(100vw-1rem)]"
           >
             <button
               type="button"
@@ -1380,8 +1380,8 @@ function Dialer({ selectedPhoneNumber = '', isOpen = true, onClose, currentUser 
             bottom: 'auto'
           } : undefined}
           className={`dialer-floating-card dialer-panel-${dialerMotion} fixed ${
-            position ? '' : 'bottom-4 right-4 md:bottom-6 md:right-6'
-          } z-50 w-full max-w-[340px] rounded-2xl border border-gray-700 bg-[#161B28] text-white shadow-2xl flex flex-col overflow-hidden select-none`}
+            position ? '' : 'bottom-4 right-2 sm:right-4 md:bottom-6 md:right-6'
+          } z-50 w-[calc(100vw-1rem)] sm:w-[340px] max-w-[340px] rounded-2xl border border-gray-700 bg-[#161B28] text-white shadow-2xl flex flex-col overflow-hidden select-none`}
         >
           {/* Draggable Header */}
           <div

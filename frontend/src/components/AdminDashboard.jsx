@@ -661,7 +661,7 @@ function AdminDashboard({ showStats = true, showCreateUser = true, showUsers = t
                 const assignedNumbers = getUserAssignedNumbers(userId);
 
                 return (
-                  <div key={userId} className="flex items-start justify-between gap-3 px-4 py-3">
+                  <div key={userId} className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-white">{user.name}</p>
                       <p className="truncate text-xs text-gray-400">{user.email}</p>
@@ -703,7 +703,7 @@ function AdminDashboard({ showStats = true, showCreateUser = true, showUsers = t
                         <p className="mt-1 text-xs text-gray-500">No numbers assigned</p>
                       )}
                     </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <div className="flex shrink-0 flex-row flex-wrap sm:flex-col items-start sm:items-end gap-1.5 pt-2 sm:pt-0 border-t border-gray-800/80 sm:border-0">
                       <div className="flex flex-wrap justify-end gap-1.5">
                         <button
                           type="button"

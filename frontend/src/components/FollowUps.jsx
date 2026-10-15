@@ -448,7 +448,7 @@ function FollowUps({ onDueCountChange, currentUser }) {
 
                   <div
                     ref={isMenuOpen ? menuRef : null}
-                    className={`absolute bottom-2 right-3 z-20 ${isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'}`}
+                    className={`absolute bottom-2 right-3 z-20 ${isMenuOpen ? 'opacity-100' : 'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100'}`}
                   >
                     <button
                       type="button"

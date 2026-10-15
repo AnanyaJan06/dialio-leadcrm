@@ -568,8 +568,8 @@ function CRM() {
           <input type="date" name="fromDate" value={filters.fromDate} onChange={handleFilterChange} className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
           <input type="date" name="toDate" value={filters.toDate} onChange={handleFilterChange} className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" />
           <div className={`flex gap-2 md:col-span-3 ${currentUser?.role === 'admin' ? 'xl:col-span-6' : 'xl:col-span-5'}`}>
-            <button type="submit" className="rounded-xl bg-[#059669] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#047857]">Apply Filters</button>
-            <button type="button" onClick={handleResetFilters} className="rounded-xl border border-gray-700 px-4 py-2.5 text-sm font-semibold text-gray-300 transition hover:border-gray-600 hover:text-white">Reset</button>
+            <button type="submit" className="flex-1 sm:flex-initial rounded-xl bg-[#059669] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#047857]">Apply Filters</button>
+            <button type="button" onClick={handleResetFilters} className="flex-1 sm:flex-initial rounded-xl border border-gray-700 px-4 py-2.5 text-sm font-semibold text-gray-300 transition hover:border-gray-600 hover:text-white">Reset</button>
           </div>
         </form>
       </div>
@@ -700,29 +700,31 @@ function CRM() {
                         {LEAD_DISPOSITIONS.map((status) => <option key={status} value={status}>{status}</option>)}
                       </select>
 
-                      <button
-                        type="button"
-                        onClick={() => handleCallLead(lead.phone)}
-                        disabled={!hasUsablePhone}
-                        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 text-xs font-medium text-sky-200 transition hover:border-sky-400 hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
-                        title={hasUsablePhone ? `Call ${lead.phone}` : 'No phone number'}
-                        aria-label={hasUsablePhone ? `Call ${lead.phone}` : 'No phone number to call'}
-                      >
-                        <Phone className="h-4 w-4" aria-hidden="true" />
-                        Make Call
-                      </button>
+                      <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-col">
+                        <button
+                          type="button"
+                          onClick={() => handleCallLead(lead.phone)}
+                          disabled={!hasUsablePhone}
+                          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 text-xs font-medium text-sky-200 transition hover:border-sky-400 hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
+                          title={hasUsablePhone ? `Call ${lead.phone}` : 'No phone number'}
+                          aria-label={hasUsablePhone ? `Call ${lead.phone}` : 'No phone number to call'}
+                        >
+                          <Phone className="h-4 w-4" aria-hidden="true" />
+                          Make Call
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleMessageLead(lead)}
-                        disabled={!hasUsablePhone}
-                        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 text-xs font-medium text-sky-200 transition hover:border-sky-400 hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
-                        title={hasUsablePhone ? `Open SMS for ${lead.phone}` : 'No phone number'}
-                        aria-label={hasUsablePhone ? `Open SMS for ${lead.phone}` : 'No phone number to message'}
-                      >
-                        <MessageSquare className="h-4 w-4" aria-hidden="true" />
-                        Open SMS
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMessageLead(lead)}
+                          disabled={!hasUsablePhone}
+                          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 text-xs font-medium text-sky-200 transition hover:border-sky-400 hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
+                          title={hasUsablePhone ? `Open SMS for ${lead.phone}` : 'No phone number'}
+                          aria-label={hasUsablePhone ? `Open SMS for ${lead.phone}` : 'No phone number to message'}
+                        >
+                          <MessageSquare className="h-4 w-4" aria-hidden="true" />
+                          Open SMS
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -815,7 +817,7 @@ function CRM() {
 
       {selectedNoteLead && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-950 shadow-2xl">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto thin-scrollbar rounded-2xl border border-gray-700 bg-gray-950 shadow-2xl">
             <div className="flex items-start justify-between gap-4 border-b border-gray-800 px-4 py-3">
               <div className="min-w-0">
                 <h3 className="truncate text-base font-semibold text-white">Notes</h3>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { BACKEND_URL } from '../config/api.js';
 import { AppSkeletonTheme, Skeleton } from './ui/AppSkeleton.jsx';
 import InlineLoader from './ui/InlineLoader.jsx';
@@ -176,7 +177,8 @@ function InternalMessages({
 function InternalMessageDetails({
   currentUser,
   selectedUser,
-  onReadMessages
+  onReadMessages,
+  onBack
 }) {
   const selectedUserId = getUserId(selectedUser);
   const [messages, setMessages] = useState([]);
@@ -292,12 +294,27 @@ function InternalMessageDetails({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#0F1322]">
-      <div className="border-b border-gray-800 bg-[#161B28] px-5 py-4">
-        <p className="truncate text-sm font-semibold text-white">{selectedUser.name}</p>
-        <p className="truncate text-xs text-gray-400">{selectedUser.email || 'Team conversation'}</p>
+      <div className="border-b border-gray-800 bg-[#161B28] px-3.5 py-3 sm:px-5 sm:py-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="lg:hidden p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition shrink-0"
+              title="Back to teammates"
+              aria-label="Back to teammates"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+          )}
+          <div className="min-w-0">
+            <p className="truncate text-sm sm:text-base font-semibold text-white">{selectedUser.name}</p>
+            <p className="truncate text-xs text-gray-400">{selectedUser.email || 'Team conversation'}</p>
+          </div>
+        </div>
       </div>
 
-      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-auto p-5 thin-scrollbar">
+      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-auto p-3.5 sm:p-5 thin-scrollbar">
         {loadingMessages ? (
           <TeamConversationSkeleton />
         ) : messages.length === 0 ? (
@@ -308,7 +325,7 @@ function InternalMessageDetails({
 
             return (
               <div key={message._id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[78%] rounded-xl px-3 py-2 ${
+                <div className={`max-w-[86%] sm:max-w-[78%] rounded-xl px-3 py-2 ${
                   mine
                     ? 'internal-message-outbound bg-[#059669] text-white'
                     : 'internal-message-inbound bg-gray-800 text-white'

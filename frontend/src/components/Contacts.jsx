@@ -134,6 +134,9 @@ function Contacts() {
     window.dispatchEvent(new CustomEvent('messageContact', {
       detail: { phoneNumber: phone }
     }));
+    window.dispatchEvent(new CustomEvent('openConversation', {
+      detail: { phoneNumber: phone }
+    }));
   };
 
   const handleDeleteClick = async (id) => {
@@ -256,18 +259,18 @@ function Contacts() {
                 {contact.company && <p className="text-xs text-gray-500 mt-0.5 truncate">{contact.company}</p>}
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={() => handleCallClick(contact.phone)}
-                  className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-xl text-xs text-white font-medium transition"
+                  className="flex-1 sm:flex-initial text-center bg-green-600 hover:bg-green-700 px-3.5 py-2 rounded-xl text-xs text-white font-medium transition"
                 >
                   Call
                 </button>
                 <button
                   type="button"
                   onClick={() => handleMessageClick(contact.phone)}
-                  className="bg-[#059669] hover:bg-[#047857] px-4 py-2 rounded-xl text-xs text-white font-medium transition"
+                  className="flex-1 sm:flex-initial text-center bg-[#059669] hover:bg-[#047857] px-3.5 py-2 rounded-xl text-xs text-white font-medium transition"
                 >
                   SMS
                 </button>
@@ -275,7 +278,7 @@ function Contacts() {
                   type="button"
                   onClick={() => handleDeleteClick(contact._id)}
                   disabled={deletingContactId === contact._id}
-                  className="bg-red-600/80 hover:bg-red-700 px-3 py-2 rounded-xl text-xs text-white transition disabled:opacity-70"
+                  className="flex-1 sm:flex-initial text-center bg-red-600/80 hover:bg-red-700 px-3 py-2 rounded-xl text-xs text-white transition disabled:opacity-70"
                 >
                   {deletingContactId === contact._id ? <InlineLoader label="Deleting" size="xs" /> : 'Delete'}
                 </button>
