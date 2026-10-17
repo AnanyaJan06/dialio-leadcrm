@@ -168,6 +168,32 @@ function CRM() {
 
   const [updatingAiStatus, setUpdatingAiStatus] = useState(false);
 
+  useEffect(() => {
+    if (!callLogsLeadId && !noteLeadId && !showCreateForm) return undefined;
+
+    window.history.pushState({ dialioNav: true, ts: Date.now() }, '', window.location.href);
+
+    const handleBackNavigation = (event) => {
+      if (callLogsLeadId) {
+        event.preventDefault();
+        setCallLogsLeadId(null);
+        return;
+      }
+      if (noteLeadId) {
+        event.preventDefault();
+        setNoteLeadId(null);
+        return;
+      }
+      if (showCreateForm) {
+        event.preventDefault();
+        setShowCreateForm(false);
+      }
+    };
+
+    window.addEventListener('dialioBackNavigation', handleBackNavigation);
+    return () => window.removeEventListener('dialioBackNavigation', handleBackNavigation);
+  }, [callLogsLeadId, noteLeadId, showCreateForm]);
+
   const authHeaders = useMemo(() => ({
     Authorization: `Bearer ${localStorage.getItem('token')}`,
   }), []);

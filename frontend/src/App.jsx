@@ -141,15 +141,35 @@ function App() {
   const activeTabRef = useRef(activeTab);
   const currentUserRef = useRef(currentUser);
   const selectedTeamUserRef = useRef(selectedTeamUser);
+  const conversationNumberRef = useRef(conversationNumber);
+  const showDialerModalRef = useRef(showDialerModal);
+  const mobileMenuOpenRef = useRef(mobileMenuOpen);
+  const mobileAdminSubTabRef = useRef(mobileAdminSubTab);
+  const tabHistoryRef = useRef([]);
   const isAdmin = currentUser?.role === 'admin';
 
-  const openTab = useCallback((tabId) => {
+  const pushAppHistoryState = useCallback(() => {
+    if (typeof window === 'undefined' || !token) return;
+    window.history.pushState({ dialioNav: true, ts: Date.now() }, '', window.location.href);
+  }, [token]);
+
+  const openTab = useCallback((tabId, options = {}) => {
+    const { fromBack = false, keepConversation = false } = options;
+    const currentTab = activeTabRef.current;
+
+    if (!fromBack && (currentTab !== tabId || conversationNumberRef.current || selectedTeamUserRef.current)) {
+      if (currentTab && currentTab !== tabId) {
+        tabHistoryRef.current = [...tabHistoryRef.current.slice(-19), currentTab];
+      }
+      pushAppHistoryState();
+    }
+
     setActiveTab(tabId);
     setMobileMenuOpen(false);
     if (tabId !== 'team') {
       setSelectedTeamUser(null);
     }
-    if (tabId !== 'messages' && tabId !== 'history' && tabId !== 'contacts') {
+    if (!keepConversation) {
       setConversationNumber('');
       setConversationLeadId('');
     }
@@ -163,25 +183,27 @@ function App() {
     if (tabId === 'followups') {
       dismissFollowUpReminderToast();
     }
-  }, []);
+  }, [pushAppHistoryState]);
 
   // Click-to-Call from Contacts
   useEffect(() => {
     const handleCallContact = (event) => {
       const { phoneNumber } = event.detail;
+      pushAppHistoryState();
       setSelectedPhoneNumber(phoneNumber);
       setShowDialerModal(true);
       window.dispatchEvent(new Event('restoreDialer'));
     };
     window.addEventListener('callContact', handleCallContact);
     return () => window.removeEventListener('callContact', handleCallContact);
-  }, []);
+  }, [pushAppHistoryState]);
 
   useEffect(() => {
     const handlePasteNumberOnDialer = (event) => {
       const { phoneNumber } = event.detail || {};
       if (!phoneNumber) return;
 
+      pushAppHistoryState();
       setSelectedPhoneNumber(phoneNumber);
       setShowDialerModal(true);
       window.dispatchEvent(new Event('restoreDialer'));
@@ -189,7 +211,7 @@ function App() {
 
     window.addEventListener('pasteNumberOnDialer', handlePasteNumberOnDialer);
     return () => window.removeEventListener('pasteNumberOnDialer', handlePasteNumberOnDialer);
-  }, []);
+  }, [pushAppHistoryState]);
 
   useEffect(() => {
     const handleMessageContact = (event) => {
@@ -214,6 +236,116 @@ function App() {
   useEffect(() => {
     selectedTeamUserRef.current = selectedTeamUser;
   }, [selectedTeamUser]);
+
+  useEffect(() => {
+    conversationNumberRef.current = conversationNumber;
+  }, [conversationNumber]);
+
+  useEffect(() => {
+    showDialerModalRef.current = showDialerModal;
+  }, [showDialerModal]);
+
+  useEffect(() => {
+    mobileMenuOpenRef.current = mobileMenuOpen;
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    mobileAdminSubTabRef.current = mobileAdminSubTab;
+  }, [mobileAdminSubTab]);
+
+  // Keep mobile/browser Back button inside the app and step back through active views/tabs
+  useEffect(() => {
+    if (!token || typeof window === 'undefined') return undefined;
+
+    if (!window.history.state?.dialioBase && !window.history.state?.dialioGuard && !window.history.state?.dialioNav) {
+      window.history.replaceState({ dialioBase: true }, '', window.location.href);
+      window.history.pushState({ dialioGuard: true }, '', window.location.href);
+    } else if (window.history.state?.dialioBase) {
+      window.history.pushState({ dialioGuard: true }, '', window.location.href);
+    }
+
+    let userActivatedGuard = false;
+    const ensureUserActivatedGuard = () => {
+      if (userActivatedGuard) return;
+      userActivatedGuard = true;
+      if (window.history.state?.dialioGuard) {
+        window.history.replaceState({ dialioGuard: true, activated: true }, '', window.location.href);
+      } else if (window.history.state?.dialioBase) {
+        window.history.pushState({ dialioGuard: true, activated: true }, '', window.location.href);
+      }
+    };
+
+    const handlePopState = () => {
+      const ensureGuardPresent = () => {
+        if (!window.history.state?.dialioNav && !window.history.state?.dialioGuard) {
+          window.history.pushState({ dialioGuard: true }, '', window.location.href);
+        }
+      };
+
+      const childBackEvent = new CustomEvent('dialioBackNavigation', { cancelable: true });
+      window.dispatchEvent(childBackEvent);
+      if (childBackEvent.defaultPrevented) {
+        ensureGuardPresent();
+        return;
+      }
+
+      if (showDialerModalRef.current) {
+        setShowDialerModal(false);
+        ensureGuardPresent();
+        return;
+      }
+
+      if (mobileMenuOpenRef.current) {
+        setMobileMenuOpen(false);
+        ensureGuardPresent();
+        return;
+      }
+
+      if (conversationNumberRef.current) {
+        setConversationNumber('');
+        setConversationLeadId('');
+        ensureGuardPresent();
+        return;
+      }
+
+      if (activeTabRef.current === 'team' && selectedTeamUserRef.current) {
+        setSelectedTeamUser(null);
+        ensureGuardPresent();
+        return;
+      }
+
+      if (activeTabRef.current === 'admin' && mobileAdminSubTabRef.current !== 'users') {
+        setMobileAdminSubTab('users');
+        ensureGuardPresent();
+        return;
+      }
+
+      while (tabHistoryRef.current.length > 0) {
+        const previousTab = tabHistoryRef.current[tabHistoryRef.current.length - 1];
+        tabHistoryRef.current = tabHistoryRef.current.slice(0, -1);
+        if (previousTab && previousTab !== activeTabRef.current) {
+          openTab(previousTab, { fromBack: true });
+          ensureGuardPresent();
+          return;
+        }
+      }
+
+      if (activeTabRef.current !== 'history') {
+        openTab('history', { fromBack: true });
+        ensureGuardPresent();
+        return;
+      }
+
+      ensureGuardPresent();
+    };
+
+    window.addEventListener('pointerdown', ensureUserActivatedGuard, { passive: true });
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('pointerdown', ensureUserActivatedGuard);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [openTab, token]);
 
   useEffect(() => {
     const userId = getUserId(currentUser);
@@ -378,7 +510,7 @@ function App() {
           setSelectedMessageLeadId(message.lead || '');
           setConversationNumber(message.from);
           setConversationLeadId(message.lead || '');
-          openTab('messages');
+          openTab('messages', { keepConversation: true });
         }
       });
     });
@@ -435,8 +567,9 @@ function App() {
           showTeamMessageToast({
             senderName: message.sender?.name,
             onClick: () => {
-              setSelectedTeamUser(message.sender);
               openTab('team');
+              pushAppHistoryState();
+              setSelectedTeamUser(message.sender);
             }
           });
         }
@@ -447,7 +580,7 @@ function App() {
       window.clearTimeout(unreadRefreshTimer);
       socket.disconnect();
     };
-  }, [openTab, refreshUnreadTeamMessages, token]);
+  }, [openTab, pushAppHistoryState, refreshUnreadTeamMessages, token]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -457,13 +590,16 @@ function App() {
   useEffect(() => {
     const handleOpenConversation = (event) => {
       const { phoneNumber, leadId } = event.detail;
+      if (phoneNumber && phoneNumber !== conversationNumberRef.current) {
+        pushAppHistoryState();
+      }
       setConversationNumber(phoneNumber);
       setConversationLeadId(leadId || '');
     };
 
     window.addEventListener('openConversation', handleOpenConversation);
     return () => window.removeEventListener('openConversation', handleOpenConversation);
-  }, []);
+  }, [pushAppHistoryState]);
 
   const clearSelectedMessageNumber = useCallback(() => {
     setSelectedMessageNumber('');
@@ -471,6 +607,9 @@ function App() {
   }, []);
 
   const openNewCall = () => {
+    if (!showDialerModalRef.current) {
+      pushAppHistoryState();
+    }
     setSelectedPhoneNumber('');
     setShowDialerModal(true);
     window.dispatchEvent(new Event('restoreDialer'));
@@ -557,7 +696,10 @@ function App() {
         <div className="flex items-center gap-2.5 min-w-0">
           <button
             type="button"
-            onClick={() => setMobileMenuOpen(true)}
+            onClick={() => {
+              pushAppHistoryState();
+              setMobileMenuOpen(true);
+            }}
             className="relative p-2 rounded-xl text-gray-300 hover:text-white hover:bg-gray-800 transition shrink-0"
             aria-label="Open navigation menu"
           >
@@ -817,7 +959,12 @@ function App() {
               </button>
               <button
                 type="button"
-                onClick={() => setMobileAdminSubTab('stats')}
+                onClick={() => {
+                  if (mobileAdminSubTab !== 'stats') {
+                    pushAppHistoryState();
+                  }
+                  setMobileAdminSubTab('stats');
+                }}
                 className={`px-2 py-1 rounded-md font-medium transition ${
                   mobileAdminSubTab === 'stats' ? 'bg-[#059669] text-white shadow-sm' : 'text-gray-400 hover:text-white'
                 }`}
@@ -935,7 +1082,12 @@ function App() {
                 <InternalMessages
                   currentUser={currentUser}
                   selectedUserId={getUserId(selectedTeamUser)}
-                  onSelectUser={setSelectedTeamUser}
+                  onSelectUser={(user) => {
+                    if (user && getUserId(user) !== getUserId(selectedTeamUserRef.current)) {
+                      pushAppHistoryState();
+                    }
+                    setSelectedTeamUser(user);
+                  }}
                   onReadMessages={refreshUnreadTeamMessages}
                 />
               </div>

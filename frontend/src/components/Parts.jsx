@@ -412,12 +412,33 @@ function Parts({ currentUser: propCurrentUser = null }) {
     setModalOpen(true);
   };
 
-  const handleCloseModal = () => {
+  const handleCloseModal = useCallback(() => {
     if (saving) return;
     setModalOpen(false);
     setEditingPart(null);
     setForm(emptyForm);
-  };
+  }, [saving]);
+
+  useEffect(() => {
+    if (!modalOpen && !sheetSyncModalOpen) return undefined;
+
+    window.history.pushState({ dialioNav: true, ts: Date.now() }, '', window.location.href);
+
+    const handleBackNavigation = (event) => {
+      if (modalOpen) {
+        event.preventDefault();
+        handleCloseModal();
+        return;
+      }
+      if (sheetSyncModalOpen) {
+        event.preventDefault();
+        setSheetSyncModalOpen(false);
+      }
+    };
+
+    window.addEventListener('dialioBackNavigation', handleBackNavigation);
+    return () => window.removeEventListener('dialioBackNavigation', handleBackNavigation);
+  }, [handleCloseModal, modalOpen, sheetSyncModalOpen]);
 
   const handleFormChange = (event) => {
     const { name, value } = event.target;

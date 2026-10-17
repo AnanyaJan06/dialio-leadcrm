@@ -415,6 +415,20 @@ function ConversationDetails({ phoneNumber, leadId = '', onClose }) {
     return () => { clearTimeout(timer); controller.abort(); };
   }, [showQuotePicker, partSearch]);
 
+  useEffect(() => {
+    if (!showQuotePicker) return undefined;
+
+    window.history.pushState({ dialioNav: true, ts: Date.now() }, '', window.location.href);
+
+    const handleBackNavigation = (event) => {
+      event.preventDefault();
+      setShowQuotePicker(false);
+    };
+
+    window.addEventListener('dialioBackNavigation', handleBackNavigation);
+    return () => window.removeEventListener('dialioBackNavigation', handleBackNavigation);
+  }, [showQuotePicker]);
+
   const sendPartQuote = (part) => {
     const title = part.title || [part.year, part.make, part.model, part.part, part.trim].filter(Boolean).join(' ');
     const details = [
